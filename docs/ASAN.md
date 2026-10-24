@@ -19,7 +19,13 @@ This is not something you can do "in a minute". Plan for it.
 
 ```bash
 chmod +x scripts/setup_asan.sh
-./scripts/setup_asan.sh 155.0.8059.84
+JOBS=8 ./scripts/setup_asan.sh 155.0.8059.84
+```
+
+For the CVE-2026-110922 regression test, build the test target instead:
+
+```bash
+TARGET=content_browsertests JOBS=8 ./scripts/setup_asan.sh 155.0.8059.84
 ```
 
 The script clones `depot_tools`, runs `fetch chromium`, checks out the release

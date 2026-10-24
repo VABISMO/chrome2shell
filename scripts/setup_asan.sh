@@ -15,6 +15,8 @@ set -euo pipefail
 
 VERSION="${1:-155.0.8059.84}"
 WORK="${2:-$HOME/chromium}"
+TARGET="${TARGET:-chrome}"          # content_browsertests for the 110922 test
+JOBS="${JOBS:-$(nproc)}"
 SRC="$WORK/src"
 OUT="$SRC/out/asan"
 
@@ -50,7 +52,7 @@ say "syncing dependencies"
 gclient sync -D --with_branch_heads --with_tags
 
 say "generating out/asan"
-gn gen "$OUT" --args='
+gn gen "$OUT" --args="
   is_debug=false
   is_official_build=false
   is_asan=true
@@ -59,13 +61,17 @@ gn gen "$OUT" --args='
   blink_symbol_level=1
   enable_nacl=false
   use_lld=true
+  use_thin_lto=false
   treat_warnings_as_errors=false
-'
+"
 
-say "building chrome with ASAN (hours)"
-autoninja -C "$OUT" chrome
+# 15 GB of RAM cannot link Chromium with the default -j on 18 cores; lld with
+# ThinLTO off keeps peak memory low enough, but the job count still has to be
+# capped by the caller (JOBS=8 ./scripts/setup_asan.sh ...).
+say "building $TARGET with ASAN (hours, -j $JOBS)"
+autoninja -j "$JOBS" -C "$OUT" "$TARGET"
 
-say "done: $OUT/chrome"
+say "done: $OUT/$TARGET"
 echo
 echo "Point a case at that binary:"
 echo "  # or edit cases/<CVE>/case.json and add: \"browser\": \"$OUT/chrome\""
