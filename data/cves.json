@@ -1,0 +1,308 @@
+[
+  {
+    "cve": "CVE-2026-113341",
+    "severity": "Critical",
+    "component": "Memory corruption in Skia",
+    "bug_id": "569165786",
+    "fixed_version": "156.0.8078.47",
+    "release_date": "2026-10-20",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html"
+  },
+  {
+    "cve": "CVE-2026-113303",
+    "severity": "Critical",
+    "component": "Memory corruption in WebRTC",
+    "bug_id": "574041825",
+    "fixed_version": "156.0.8078.47",
+    "release_date": "2026-10-20",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html"
+  },
+  {
+    "cve": "CVE-2026-113280",
+    "severity": "Critical",
+    "component": "Memory corruption in Paint",
+    "bug_id": "570740320",
+    "fixed_version": "156.0.8078.47",
+    "release_date": "2026-10-20",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html"
+  },
+  {
+    "cve": "CVE-2026-113279",
+    "severity": "Critical",
+    "component": "Memory corruption in Accessibility",
+    "bug_id": "570093145",
+    "fixed_version": "156.0.8078.47",
+    "release_date": "2026-10-20",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html"
+  },
+  {
+    "cve": "CVE-2026-113271",
+    "severity": "Critical",
+    "component": "Use after free in Accessibility",
+    "bug_id": "571618833",
+    "fixed_version": "156.0.8078.47",
+    "release_date": "2026-10-20",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html"
+  },
+  {
+    "cve": "CVE-2026-113072",
+    "severity": "Critical",
+    "component": "Memory corruption in CSS",
+    "bug_id": "570638836",
+    "fixed_version": "156.0.8078.47",
+    "release_date": "2026-10-20",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_02018666648.html"
+  },
+  {
+    "cve": "CVE-2026-110922",
+    "severity": "Critical",
+    "component": "Use after free in Prerender",
+    "bug_id": "568719351",
+    "fixed_version": "155.0.8059.84",
+    "release_date": "2026-10-15",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01886704284.html"
+  },
+  {
+    "cve": "CVE-2026-110165",
+    "severity": "Critical",
+    "component": "Use after free in Core",
+    "bug_id": "568827293",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-110161",
+    "severity": "Critical",
+    "component": "Use after free in Network",
+    "bug_id": "568826881",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-110152",
+    "severity": "Critical",
+    "component": "Buffer overflow in ANGLE",
+    "bug_id": "567736859",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-110151",
+    "severity": "Critical",
+    "component": "Use after free in Media",
+    "bug_id": "570638834",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-110149",
+    "severity": "Critical",
+    "component": "Use after free in Browser",
+    "bug_id": "568437149",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-110148",
+    "severity": "Critical",
+    "component": "Use after free in SVG",
+    "bug_id": "570050934",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-110136",
+    "severity": "Critical",
+    "component": "Use after free in PDF",
+    "bug_id": "568719364",
+    "fixed_version": "155.0.8059.79",
+    "release_date": "2026-10-13",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_01668083673.html"
+  },
+  {
+    "cve": "CVE-2026-106382",
+    "severity": "Critical",
+    "component": "Use after free in Chromecast",
+    "bug_id": "534994449",
+    "fixed_version": "155.0.8059.39",
+    "release_date": "2026-10-06",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_086471744.html"
+  },
+  {
+    "cve": "CVE-2026-106358",
+    "severity": "Critical",
+    "component": "Use after free in Navigation",
+    "bug_id": "567160164",
+    "fixed_version": "155.0.8059.39",
+    "release_date": "2026-10-06",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_086471744.html"
+  },
+  {
+    "cve": "CVE-2026-106347",
+    "severity": "Critical",
+    "component": "Use after free in Track",
+    "bug_id": "567936270",
+    "fixed_version": "155.0.8059.39",
+    "release_date": "2026-10-06",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_086471744.html"
+  },
+  {
+    "cve": "CVE-2026-106197",
+    "severity": "Critical",
+    "component": "Use after free in Browser",
+    "bug_id": "560238696",
+    "fixed_version": "155.0.8059.39",
+    "release_date": "2026-10-06",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop_086471744.html"
+  },
+  {
+    "cve": "CVE-2026-103628",
+    "severity": "Critical",
+    "component": "Out of bounds write in WebGL",
+    "bug_id": "549995090",
+    "fixed_version": "154.0.8037.97",
+    "release_date": "2026-10-01",
+    "advisory": "https://chromereleases.googleblog.com/2026/10/stable-channel-update-for-desktop.html"
+  },
+  {
+    "cve": "CVE-2026-102331",
+    "severity": "Critical",
+    "component": "Buffer overflow in ANGLE",
+    "bug_id": "551673541",
+    "fixed_version": "154.0.8037.92",
+    "release_date": "2026-09-29",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_01807488085.html"
+  },
+  {
+    "cve": "CVE-2026-95356",
+    "severity": "Critical",
+    "component": "Use after free in WindowDialog",
+    "bug_id": "560439699",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95349",
+    "severity": "Critical",
+    "component": "Buffer overflow in WebGL",
+    "bug_id": "553172761",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95339",
+    "severity": "Critical",
+    "component": "Use after free in ServiceWorker",
+    "bug_id": "548585299",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95329",
+    "severity": "Critical",
+    "component": "Out of bounds write in WebGL",
+    "bug_id": "559320837",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95322",
+    "severity": "Critical",
+    "component": "Out of bounds write in GPU",
+    "bug_id": "556576992",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95313",
+    "severity": "Critical",
+    "component": "Use after free in Fullscreen",
+    "bug_id": "552665794",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95310",
+    "severity": "Critical",
+    "component": "Use after free in AdFilter",
+    "bug_id": "562151598",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95284",
+    "severity": "Critical",
+    "component": "Buffer overflow in ANGLE",
+    "bug_id": "556435507",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-95281",
+    "severity": "Critical",
+    "component": "Buffer overflow in ANGLE",
+    "bug_id": "551708184",
+    "fixed_version": "154.0.8037.57",
+    "release_date": "2026-09-22",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0856730748.html"
+  },
+  {
+    "cve": "CVE-2026-93374",
+    "severity": "Critical",
+    "component": "Use after free in Dawn",
+    "bug_id": "500417361",
+    "fixed_version": "153.0.8010.52",
+    "release_date": "2026-09-17",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0194356994.html"
+  },
+  {
+    "cve": "CVE-2026-93372",
+    "severity": "Critical",
+    "component": "Buffer overflow in WebGL",
+    "bug_id": "548085797",
+    "fixed_version": "153.0.8010.52",
+    "release_date": "2026-09-17",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0194356994.html"
+  },
+  {
+    "cve": "CVE-2026-91749",
+    "severity": "Critical",
+    "component": "Use after free in Workers",
+    "bug_id": "558456602",
+    "fixed_version": "153.0.8010.47",
+    "release_date": "2026-09-15",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0541751186.html"
+  },
+  {
+    "cve": "CVE-2026-91726",
+    "severity": "Critical",
+    "component": "Out of bounds read in WebGL",
+    "bug_id": "556870863",
+    "fixed_version": "153.0.8010.47",
+    "release_date": "2026-09-15",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0541751186.html"
+  },
+  {
+    "cve": "CVE-2026-91721",
+    "severity": "Critical",
+    "component": "Use after free in Internals",
+    "bug_id": "557320614",
+    "fixed_version": "153.0.8010.47",
+    "release_date": "2026-09-15",
+    "advisory": "https://chromereleases.googleblog.com/2026/09/stable-channel-update-for-desktop_0541751186.html"
+  }
+]

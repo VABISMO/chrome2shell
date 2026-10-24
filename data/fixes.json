@@ -1,0 +1,79 @@
+{
+  "CVE-2026-113341": {
+    "bug_id": "569165786",
+    "fix": {
+      "repo": "google/skia",
+      "sha": "02b14267cb023e7ec9fc52618bd12464ceb6afb7",
+      "subject": "[ganesh] Imagination FBO workaround v2",
+      "date": "2026-10-12T11:23:25.000-04:00",
+      "url": "https://github.com/google/skia/commit/02b14267cb023e7ec9fc52618bd12464ceb6afb7",
+      "patch": "patches/CVE-2026-113341.patch"
+    }
+  },
+  "CVE-2026-113303": {
+    "bug_id": "574041825",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "e193ceb7de134efa938172d45c38daec31658357",
+      "subject": "Prevent attaching WebRtcAudioRenderer to terminated audio device",
+      "date": "2026-10-16T07:12:49.000-07:00",
+      "url": "https://github.com/chromium/chromium/commit/e193ceb7de134efa938172d45c38daec31658357",
+      "patch": "patches/CVE-2026-113303.patch"
+    }
+  },
+  "CVE-2026-113280": {
+    "bug_id": "570740320",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "3ab9f85874d939e29f1179d7184e79f3cdc58a47",
+      "subject": "Remove redundant IsHidden() check in FrameCaret::PaintCaret()",
+      "date": "2026-10-07T18:00:46.000-07:00",
+      "url": "https://github.com/chromium/chromium/commit/3ab9f85874d939e29f1179d7184e79f3cdc58a47",
+      "patch": "patches/CVE-2026-113280.patch"
+    }
+  },
+  "CVE-2026-113279": {
+    "bug_id": "570093145",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "83ce9f18d70490edb5d154ff04471f9c9fdde346",
+      "subject": "[a11y] Mark image dirty directly when removing image map",
+      "date": "2026-10-09T09:35:50.000-07:00",
+      "url": "https://github.com/chromium/chromium/commit/83ce9f18d70490edb5d154ff04471f9c9fdde346",
+      "patch": "patches/CVE-2026-113279.patch"
+    }
+  },
+  "CVE-2026-113271": {
+    "bug_id": "571618833",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "15248c94bc3d90896e0a56d66ebc3a362318fe49",
+      "subject": "[a11y] Copy title attribute value in AXNodeObject",
+      "date": "2026-10-13T18:10:24.000-07:00",
+      "url": "https://github.com/chromium/chromium/commit/15248c94bc3d90896e0a56d66ebc3a362318fe49",
+      "patch": "patches/CVE-2026-113271.patch"
+    }
+  },
+  "CVE-2026-113072": {
+    "bug_id": "570638836",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "73dd2febfaa5d8d2a398dbd906454a4e7e9d2b79",
+      "subject": "Do not expose pseudo-elements through LargestContentfulPaint API",
+      "date": "2026-10-13T15:29:08.000-07:00",
+      "url": "https://github.com/chromium/chromium/commit/73dd2febfaa5d8d2a398dbd906454a4e7e9d2b79",
+      "patch": "patches/CVE-2026-113072.patch"
+    }
+  },
+  "CVE-2026-110922": {
+    "bug_id": "568719351",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "d50992ebe4421079a6f9782c7e8a4d0eb3f14c5f",
+      "subject": "Guard BeginNavigation() against self-deletion during prerender checks",
+      "date": "2026-10-06T01:27:18.000-07:00",
+      "url": "https://github.com/chromium/chromium/commit/d50992ebe4421079a6f9782c7e8a4d0eb3f14c5f",
+      "patch": "patches/CVE-2026-110922.patch"
+    }
+  }
+}

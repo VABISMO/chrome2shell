@@ -1,0 +1,14 @@
+{
+  "name": "chrome-cve-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Laboratorio de reproduccion de CVEs criticos de Chrome (crash-only)",
+  "scripts": {
+    "oracle": "node harness/oracle.mjs",
+    "case": "node harness/run-case.mjs"
+  },
+  "dependencies": {
+    "playwright-core": "^1.55.0"
+  }
+}
