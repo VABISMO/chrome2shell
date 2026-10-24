@@ -89,6 +89,11 @@ node harness/run-case.mjs --all
 El oráculo devuelve `42` si detecta crash, `0` si no. Los resultados quedan en
 `findings/<CVE>.json` y `findings/raw/`.
 
+> **Nota:** el zip de Chrome for Testing no conserva los permisos unix.
+> `fetch_chrome.py` los restaura; si lo extraes a mano, ejecuta
+> `chmod +x chrome chrome_crashpad_handler chrome_sandbox` o el navegador
+> abortará al arrancar (`posix_spawn ... Permission denied`).
+
 ## Metodología
 
 1. **Inventario** — el feed oficial de *Stable updates* incluye severidad, CVE,

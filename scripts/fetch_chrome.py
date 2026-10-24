@@ -62,7 +62,13 @@ def download(version: str, dest: Path, force: bool) -> Path:
         bad = zf.testzip()
         if bad:
             raise RuntimeError(f"zip corrupto: {bad}")
-        zf.extractall(dest)
+        # extractall() no restaura los permisos unix: sin esto falla
+        # chrome_crashpad_handler y el arranque aborta con SIGABRT.
+        for info in zf.infolist():
+            target = Path(zf.extract(info, dest))
+            mode = (info.external_attr >> 16) & 0o777
+            if mode:
+                target.chmod(mode)
     zip_path.unlink()
 
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)

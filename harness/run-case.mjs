@@ -158,18 +158,27 @@ for (const id of ids) {
     console.log(`   ${label.padEnd(10)} crash=${report.crashed} ${report.crashType ?? ""} ${JSON.stringify(report.results[0]?.result ?? null).slice(0, 160)}`);
   }
 
+  const vres = runs.vulnerable.results[0]?.result;
+  const fres = runs.fixed.results[0]?.result;
+  const behaviorDiff =
+    vres && fres && "vulnerableBehavior" in vres && "vulnerableBehavior" in fres
+      ? vres.vulnerableBehavior !== fres.vulnerableBehavior
+      : false;
+
   const verdict =
     runs.vulnerable.crashed && !runs.fixed.crashed
       ? "reproduced"
       : runs.vulnerable.crashed && runs.fixed.crashed
         ? "crash-en-ambas"
-        : "sin-crash";
+        : behaviorDiff
+          ? "diferencia-conductual"
+          : "sin-crash";
 
   await writeFile(
     join(ROOT, "findings", `${id}.json`),
     JSON.stringify({ id, meta, verdict, runs }, null, 2) + "\n",
   );
-  summary.push({ id, status: verdict, crashed: runs.vulnerable.crashed });
+  summary.push({ id, status: verdict, crashed: runs.vulnerable.crashed, behaviorDiff });
 }
 
 server.close();
