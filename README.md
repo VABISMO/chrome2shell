@@ -1,4 +1,13 @@
-# chrome-cve-lab
+# chrome2shell — Chrome CVE research lab
+
+> **Este repositorio NO contiene exploits ni una cadena RCE.** A pesar del
+> nombre, es un laboratorio de reproducción *crash-only* y evaluación de
+> explotabilidad: inventario de CVEs, parches, causa raíz y diferencial
+> vulnerable vs. parcheada. No incluye código de explotación, primitivas de
+> escritura ni sandbox escapes.
+>
+> Uso previsto: investigación defensiva y verificación de parches en entornos
+> propios y autorizados.
 
 Laboratorio reproducible para estudiar y **verificar** los CVEs críticos de
 Google Chrome, usando exclusivamente información pública: avisos oficiales,
@@ -57,8 +66,17 @@ chrome-cve-lab/
 │   └── run-case.mjs       # ejecuta un caso en vulnerable vs. parcheada
 ├── cases/<CVE>/           # case.json + testcase.html + README con la causa raiz
 ├── patches/               # parches de los fixes (evidencia)
-└── findings/              # resultados crudos y RESULTS.md
+├── docs/                  # ADDING_CVES.md, ASAN.md
+└── findings/              # RESULTS.md, EXPLOITABILITY.md y JSON
 ```
+
+Documentos clave:
+
+- [`findings/RESULTS.md`](findings/RESULTS.md) — qué se reprodujo y qué no.
+- [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md) — evaluación de
+  explotabilidad por CVE (alcanzabilidad, ciclo de vida, mitigaciones, nivel).
+- [`docs/ASAN.md`](docs/ASAN.md) — build con sanitizers para caracterizar los
+  UAF (el siguiente paso real).
 
 ## Requisitos
 
@@ -143,3 +161,9 @@ Ver [`docs/ADDING_CVES.md`](docs/ADDING_CVES.md).
 
 Uso exclusivamente en un entorno propio y aislado. No apuntes el harness a
 sitios de terceros ni distribuyas los testcases como exploits.
+
+Este repositorio **no es un exploit kit**: no contiene código de ejecución
+remota, ni primitivas de lectura/escritura, ni sandbox escapes. Los testcases
+solo ejercitan rutas de código para detectar crashes y comparar comportamiento
+entre versiones. Cualquier uso para atacar sistemas sin autorización queda
+fuera del alcance previsto y es responsabilidad de quien lo realice.
