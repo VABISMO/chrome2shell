@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Oráculo de crash: carga una URL en una build concreta de Chrome y reporta
- * si el renderer o el browser process han muerto, ademas del resultado que el
- * propio testcase publique en `window.__LAB_RESULT`.
+ * Crash oracle: loads a URL in a specific Chrome build and reports whether the
+ * renderer or the browser process died, plus the result the testcase itself
+ * publishes in `window.__LAB_RESULT`.
  *
- * Solo detecta crashes. No contiene logica de explotacion.
+ * It only detects crashes. It contains no exploitation logic.
  *
- * Uso:
+ * Usage:
  *   node harness/oracle.mjs --browser builds/155.0.8059.84/chrome-linux64/chrome \
  *        --url http://127.0.0.1:8000/cases/X/testcase.html --timeout 20000
  */
@@ -34,7 +34,7 @@ const extraFlags = (args.flags ?? "")
   .filter(Boolean);
 
 if (!browserPath || !url) {
-  console.error("uso: oracle.mjs --browser <ruta> --url <url> [--timeout ms] [--iterations n] [--flags a,b]");
+  console.error("usage: oracle.mjs --browser <path> --url <url> [--timeout ms] [--iterations n] [--flags a,b]");
   process.exit(2);
 }
 
@@ -95,7 +95,7 @@ try {
 
     try {
       await page.goto(url, { waitUntil: "load", timeout });
-      // El testcase publica su veredicto en window.__LAB_RESULT.
+      // The testcase publishes its verdict in window.__LAB_RESULT.
       const deadline = Date.now() + timeout;
       let result = null;
       while (Date.now() < deadline) {
@@ -132,5 +132,5 @@ report.durationMs = Date.now() - started;
 if (args.out) writeFileSync(args.out, JSON.stringify(report, null, 2) + "\n");
 console.log(JSON.stringify(report, null, 2));
 
-// exit code: 0 = sin crash, 42 = crash detectado (facilita scripting)
+// exit code: 0 = no crash, 42 = crash detected (easy to script against)
 process.exit(report.crashed ? 42 : 0);

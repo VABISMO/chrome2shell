@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * Ejecuta un caso sobre la build vulnerable y la parcheada, y compara.
+ * Runs a case against the vulnerable build and the patched one, then compares.
  *
- * Uso:
+ * Usage:
  *   node harness/run-case.mjs CVE-2026-113072
  *   node harness/run-case.mjs --all
  *   node harness/run-case.mjs CVE-2026-113280 --headed
@@ -90,7 +90,7 @@ async function loadCase(id) {
 
 function browserFor(versionOrPath, override) {
   if (override) return override;
-  // permite rutas absolutas (build propia, ASAN, chromium del sistema)
+  // allow absolute paths (custom build, ASAN, system chromium)
   if (versionOrPath && versionOrPath.startsWith("/")) {
     return existsSync(versionOrPath) ? versionOrPath : null;
   }
@@ -108,7 +108,7 @@ if (args.all) {
     .sort();
 }
 if (ids.length === 0) {
-  console.error("uso: run-case.mjs <CVE-id> [--all] [--headed]");
+  console.error("usage: run-case.mjs <CVE-id> [--all] [--headed]");
   process.exit(2);
 }
 
@@ -128,7 +128,7 @@ for (const id of ids) {
     continue;
   }
   if (!vulnBin || !fixedBin) {
-    console.log(`\n== ${id}  [faltan builds] descarga con scripts/fetch_chrome.py`);
+    console.log(`\n== ${id}  [missing builds] download with scripts/fetch_chrome.py`);
     summary.push({ id, status: "missing-build", crashed: false });
     continue;
   }
@@ -169,10 +169,10 @@ for (const id of ids) {
     runs.vulnerable.crashed && !runs.fixed.crashed
       ? "reproduced"
       : runs.vulnerable.crashed && runs.fixed.crashed
-        ? "crash-en-ambas"
+        ? "crash-in-both"
         : behaviorDiff
-          ? "diferencia-conductual"
-          : "sin-crash";
+          ? "behavioral-difference"
+          : "no-crash";
 
   await writeFile(
     join(ROOT, "findings", `${id}.json`),
@@ -182,5 +182,5 @@ for (const id of ids) {
 }
 
 server.close();
-console.log("\n===== RESUMEN =====");
+console.log("\n===== SUMMARY =====");
 for (const s of summary) console.log(`${s.id}  ${s.status}`);

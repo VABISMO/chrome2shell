@@ -1,169 +1,173 @@
 # chrome2shell — Chrome CVE research lab
 
-> **Este repositorio NO contiene exploits ni una cadena RCE.** A pesar del
-> nombre, es un laboratorio de reproducción *crash-only* y evaluación de
-> explotabilidad: inventario de CVEs, parches, causa raíz y diferencial
-> vulnerable vs. parcheada. No incluye código de explotación, primitivas de
-> escritura ni sandbox escapes.
+> **This repository does NOT contain exploits or an RCE chain.** Despite the
+> name, it is a crash-only reproduction lab and exploitability assessment:
+> CVE inventory, patches, root cause and vulnerable-vs-patched differential.
+> It contains no exploit code, no read/write primitives and no sandbox escapes.
 >
-> Uso previsto: investigación defensiva y verificación de parches en entornos
-> propios y autorizados.
+> Intended use: defensive research and patch verification in owned, authorized
+> environments.
 
-Laboratorio reproducible para estudiar y **verificar** los CVEs críticos de
-Google Chrome, usando exclusivamente información pública: avisos oficiales,
-bug IDs de crbug.com y los *fix commits*.
+A reproducible lab to study and **verify** critical Google Chrome CVEs using
+only public information: official advisories, crbug.com bug IDs and the fix
+commits.
 
-> **Alcance:** laboratorio defensivo de *crash-only*. No contiene exploits, no
-> busca RCE ni evasión de sandbox. El objetivo es responder a una pregunta
-> concreta: *¿se puede reproducir el fallo con la build afectada y confirmar que
-> desaparece con la parcheada?*
+> **Scope:** defensive, crash-only lab. It contains no exploits, no RCE and no
+> sandbox evasion. The goal is to answer one question: *can the flaw be
+> reproduced on the affected build and confirmed fixed on the patched one?*
 
 ---
 
-## TL;DR — qué hemos encontrado
+## TL;DR — what we found
 
-En las dos últimas releases estables (15 y 20 de octubre de 2026) hay
-**7 CVEs marcados `Critical`** por el Chrome team:
+The last two stable releases (October 15 and 20, 2026) contain **7 CVEs rated
+`Critical`** by the Chrome team:
 
-| CVE | Componente | Tipo | Bug ID | Fix commit | Reproducible |
+| CVE | Component | Type | Bug ID | Fix commit | Reproducible |
 |-----|-----------|------|--------|-----------|--------------|
-| CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⚠️ requiere BFCache+SW |
-| CVE-2026-113341 | Skia / Ganesh | UAF (driver) | 569165786 | `02b14267` (skia) | ❌ hardware Imagination |
-| CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 stress (a11y) |
-| CVE-2026-113072 | CSS / LCP | Mem. corruption | 570638836 | `73dd2febfa` | ✅ comportamiento |
-| CVE-2026-113280 | Paint / caret | Mem. corruption | 570740320 | `3ab9f85874` | 🧪 stress (paint) |
-| CVE-2026-113271 | Accessibility | UAF (StringImpl) | 571618833 | `15248c94bc` | 🧪 stress (a11y) |
-| CVE-2026-113303 | WebRTC / audio | Mem. corruption | 574041825 | `e193ceb7de` | 🧪 stress (audio) |
+| CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⚠️ needs BFCache+SW |
+| CVE-2026-113341 | Skia / Ganesh | UAF (driver) | 569165786 | `02b14267` (skia) | ❌ Imagination hardware |
+| CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 a11y stress |
+| CVE-2026-113072 | CSS / LCP | Mem. corruption | 570638836 | `73dd2febfa` | ✅ behavioral |
+| CVE-2026-113280 | Paint / caret | Mem. corruption | 570740320 | `3ab9f85874` | 🧪 paint stress |
+| CVE-2026-113271 | Accessibility | UAF (StringImpl) | 571618833 | `15248c94bc` | 🧪 a11y stress |
+| CVE-2026-113303 | WebRTC / audio | Mem. corruption | 574041825 | `e193ceb7de` | 🧪 audio stress |
 
-**Hallazgo metodológico:** aunque los bugs de crbug.com siguen restringidos y no
-hay PoCs públicos, el aviso publica el **bug ID** y el fix aterriza en un repo
-público con `Fixed: <bug_id>` en el mensaje. Eso permite recuperar el parche
-exacto y derivar la causa raíz. `scripts/find_fixes.py` lo automatiza: 7/7
-localizados.
+**Methodological finding:** although the crbug.com bugs remain restricted and
+there are no public PoCs, the advisory publishes the **bug ID**, and the fix
+lands in a public repo with `Fixed: <bug_id>` in the commit message. That makes
+it possible to recover the exact patch and derive the root cause.
+`scripts/find_fixes.py` automates it: 7/7 found.
 
-**Realidad sobre la reproducción:** 6 de los 7 son corrupciones de memoria que
-en builds `release` (sin ASAN ni DCHECKs) no abortan de forma fiable. El
-laboratorio sirve para (1) confirmar la ruta vulnerable, (2) comparar
-vulnerable vs. parcheada y (3) servir de base para un build ASAN. Los detalles
-por CVE están en [`findings/RESULTS.md`](findings/RESULTS.md).
+**Reality check on reproduction:** 6 of the 7 are memory corruptions that do not
+reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
+(1) confirm the vulnerable path, (2) compare vulnerable vs. patched builds and
+(3) serve as a base for an ASAN build. Per-CVE details are in
+[`findings/RESULTS.md`](findings/RESULTS.md) and
+[`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md).
 
 ---
 
-## Estructura
+## Layout
 
 ```
 chrome-cve-lab/
 ├── data/
-│   ├── cves.json          # inventario generado desde el feed oficial
-│   ├── fixes.json         # CVE -> fix commit + parche
-│   └── cache/feed.json    # copia del feed (modo --offline)
+│   ├── cves.json          # inventory generated from the official feed
+│   ├── fixes.json         # CVE -> fix commit + patch
+│   └── cache/feed.json    # feed snapshot (--offline mode)
 ├── scripts/
 │   ├── sync_cves.py       # Chrome Releases RSS -> data/cves.json
 │   ├── find_fixes.py      # bug ID -> fix commit -> patches/<CVE>.patch
-│   └── fetch_chrome.py    # descarga Chrome for Testing de una version exacta
+│   ├── fetch_chrome.py    # download an exact Chrome for Testing version
+│   └── setup_asan.sh      # Chromium ASAN build (multi-hour, optional)
 ├── harness/
-│   ├── oracle.mjs         # carga una URL y detecta crash (renderer/browser)
-│   └── run-case.mjs       # ejecuta un caso en vulnerable vs. parcheada
-├── cases/<CVE>/           # case.json + testcase.html + README con la causa raiz
-├── patches/               # parches de los fixes (evidencia)
+│   ├── oracle.mjs         # load a URL and detect crashes (renderer/browser)
+│   ├── run-case.mjs       # run a case on vulnerable vs. patched builds
+│   └── repro-110922.mjs   # CVE-2026-110922 reproducer (dynamic server)
+├── cases/<CVE>/           # case.json + testcase.html + root-cause README
+├── patches/               # fix patches (evidence)
 ├── docs/                  # ADDING_CVES.md, ASAN.md
-└── findings/              # RESULTS.md, EXPLOITABILITY.md y JSON
+└── findings/              # RESULTS.md, EXPLOITABILITY.md and JSON
 ```
 
-Documentos clave:
+Key documents:
 
-- [`findings/RESULTS.md`](findings/RESULTS.md) — qué se reprodujo y qué no.
-- [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md) — evaluación de
-  explotabilidad por CVE (alcanzabilidad, ciclo de vida, mitigaciones, nivel).
-- [`docs/ASAN.md`](docs/ASAN.md) — build con sanitizers para caracterizar los
-  UAF (el siguiente paso real).
+- [`findings/RESULTS.md`](findings/RESULTS.md) — what was reproduced and what
+  was not.
+- [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md) — per-CVE
+  exploitability assessment (reachability, lifetime, mitigations, level).
+- [`docs/ASAN.md`](docs/ASAN.md) — sanitizer build to characterize the UAFs
+  (the real next step).
 
-## Requisitos
+## Requirements
 
-- Node.js ≥ 20 y `npm install` (solo `playwright-core`, sin navegadores).
+- Node.js ≥ 20 and `npm install` (only `playwright-core`, no bundled browsers).
 - Python 3.10+.
-- ~400 MB de disco por cada build de Chrome for Testing.
-- No hace falta Docker. El binario de Chrome se ejecuta directamente.
+- ~400 MB of disk per Chrome for Testing build.
+- Docker is not required. The Chrome binary runs directly.
 
-## Uso
+## Usage
 
 ```bash
 npm install
 
-# 1. inventario de CVEs criticos (ultimos 60 dias)
+# 1. critical CVE inventory (last 60 days)
 python3 scripts/sync_cves.py --min-severity Critical --days 60
 
-# 2. localizar parches (bug ID -> commit -> patch)
+# 2. locate patches (bug ID -> commit -> patch)
 python3 scripts/find_fixes.py
 
-# 3. descargar build vulnerable y primera parcheada
+# 3. download the vulnerable build and the first patched one
 python3 scripts/fetch_chrome.py 155.0.8059.84 156.0.8078.47
 
-# 4. ejecutar un caso (o todos)
+# 4. run one case (or all of them)
 node harness/run-case.mjs CVE-2026-113072
 node harness/run-case.mjs --all
 ```
 
-El oráculo devuelve `42` si detecta crash, `0` si no. Los resultados quedan en
-`findings/<CVE>.json` y `findings/raw/`.
+The oracle exits `42` when it detects a crash and `0` otherwise. Results are
+written to `findings/<CVE>.json` and `findings/raw/`.
 
-> **Nota:** el zip de Chrome for Testing no conserva los permisos unix.
-> `fetch_chrome.py` los restaura; si lo extraes a mano, ejecuta
-> `chmod +x chrome chrome_crashpad_handler chrome_sandbox` o el navegador
-> abortará al arrancar (`posix_spawn ... Permission denied`).
+> **Note:** the Chrome for Testing zip does not preserve Unix permissions.
+> `fetch_chrome.py` restores them; if you extract it by hand, run
+> `chmod +x chrome chrome_crashpad_handler chrome_sandbox` or the browser will
+> abort at startup (`posix_spawn ... Permission denied`).
 
-## Metodología
+## Methodology
 
-1. **Inventario** — el feed oficial de *Stable updates* incluye severidad, CVE,
-   componente y bug ID.
-2. **Parche** — `find_fixes.py` busca `repo:chromium/chromium <bug_id>` (y
-   `google/skia`, `google/dawn`, `google/angle` como fallback) en la GitHub
-   commit search API. El commit se guarda como `.patch`.
-3. **Causa raíz** — se lee el diff (y su test de regresión, que suele describir
-   la secuencia exacta).
-4. **Testcase** — se traduce esa secuencia a HTML/JS ejecutable en el harness.
-5. **Verificación diferencial** — mismo testcase en build vulnerable y en la
-   primera parcheada. Se compara crash y comportamiento observable.
+1. **Inventory** — the official *Stable updates* feed includes severity, CVE,
+   component and bug ID.
+2. **Patch** — `find_fixes.py` searches `repo:chromium/chromium <bug_id>` (with
+   `google/skia`, `google/dawn`, `google/angle` as fallbacks) through the
+   GitHub commit search API. The commit is saved as a `.patch`.
+3. **Root cause** — read the diff (and its regression test, which usually
+   describes the exact sequence).
+4. **Testcase** — translate that sequence into HTML/JS that runs in the
+   harness.
+5. **Differential check** — same testcase on the vulnerable build and on the
+   first patched one. Compare crashes and observable behavior.
 
-## Limitaciones (importante)
+## Limitations (important)
 
-- **Sin ASAN.** Chrome for Testing son builds `release`. Un UAF puede no
-  abortar. Para detección fiable hay que compilar Chromium con
-  `is_asan=true is_debug=false` (o `is_msan`), lo que requiere ~100 GB y horas.
-  El harness ya soporta apuntar a cualquier binario con `case.json -> browser`.
-- **Bugs de driver/hardware.** CVE-2026-113341 vive en el driver Imagination;
-  sin ese hardware no se reproduce.
-- **Bugs de browser process.** Un UAF en el proceso browser se manifiesta como
-  desconexión CDP, no como `page.on('crash')`; el oráculo lo clasifica como
+- **No ASAN.** Chrome for Testing ships `release` builds. A UAF may never
+  abort. Reliable detection requires building Chromium with
+  `is_asan=true is_debug=false` (or `is_msan`), which needs ~100 GB and hours.
+  The harness already supports pointing a case at any binary via
+  `case.json -> browser`.
+- **Driver/hardware bugs.** CVE-2026-113341 lives in the Imagination driver;
+  without that hardware it cannot be reproduced.
+- **Browser-process bugs.** A UAF in the browser process shows up as a CDP
+  disconnect, not as `page.on('crash')`; the oracle classifies it as
   `browser-launch-or-connection`.
-- **Timing.** Varios casos son carreras; se ejecutan con `iterations` y estrés,
-  pero un resultado "sin crash" **no demuestra** que el bug no exista.
+- **Timing.** Several cases are races; they run with `iterations` and stress,
+  but a "no crash" result **does not prove** the bug is absent.
 
-## Añadir un CVE nuevo
+## Adding a new CVE
 
 ```bash
 python3 scripts/sync_cves.py --min-severity High --days 30
 python3 scripts/find_fixes.py --cve CVE-2026-XXXXX
-mkdir cases/CVE-2026-XXXXX   # copia un case.json y su testcase.html
+mkdir cases/CVE-2026-XXXXX   # copy a case.json and its testcase.html
 node harness/run-case.mjs CVE-2026-XXXXX
 ```
 
-Ver [`docs/ADDING_CVES.md`](docs/ADDING_CVES.md).
+See [`docs/ADDING_CVES.md`](docs/ADDING_CVES.md).
 
-## Referencias
+## References
 
 - Chrome Releases: <https://chromereleases.googleblog.com/>
 - Chrome Security (severity guidelines): <https://www.chromium.org/developers/severity-guidelines/>
 - Chrome for Testing: <https://googlechromelabs.github.io/chrome-for-testing/>
 - NVD: <https://nvd.nist.gov/>
 
-## Aviso
+## Disclaimer
 
-Uso exclusivamente en un entorno propio y aislado. No apuntes el harness a
-sitios de terceros ni distribuyas los testcases como exploits.
+Use only in your own, isolated environment. Do not point the harness at
+third-party sites or distribute the testcases as exploits.
 
-Este repositorio **no es un exploit kit**: no contiene código de ejecución
-remota, ni primitivas de lectura/escritura, ni sandbox escapes. Los testcases
-solo ejercitan rutas de código para detectar crashes y comparar comportamiento
-entre versiones. Cualquier uso para atacar sistemas sin autorización queda
-fuera del alcance previsto y es responsabilidad de quien lo realice.
+This repository is **not an exploit kit**: it contains no remote-code-execution
+code, no read/write primitives and no sandbox escapes. The testcases only
+exercise code paths to detect crashes and compare behavior between versions.
+Any use to attack systems without authorization is outside the intended scope
+and is the responsibility of whoever performs it.

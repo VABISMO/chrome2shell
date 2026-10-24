@@ -1,107 +1,143 @@
-# Resultados del laboratorio
+# Lab results
 
-Fecha: 2026-10-24
-Builds usadas:
+Date: 2026-10-24
+Builds used:
 
-| Rol | Versión | Origen |
-|-----|---------|--------|
-| Afectada (6 CVEs del 20-oct) | 155.0.8059.84 | Chrome for Testing |
-| Primera parcheada | 156.0.8078.47 | Chrome for Testing |
-| Afectada (CVE-2026-110922) | 155.0.8059.79 | Chrome for Testing |
-| Chromium del sistema (pruebas iniciales) | 155.0.8059.39 | distro |
+| Role | Version | Source |
+|------|---------|--------|
+| Affected (6 CVEs from Oct 20) | 155.0.8059.84 | Chrome for Testing |
+| First patched | 156.0.8078.47 | Chrome for Testing |
+| Affected (CVE-2026-110922) | 155.0.8059.79 | Chrome for Testing |
+| System Chromium (initial checks) | 155.0.8059.39 | distro |
 
 ---
 
-## 1. Inventario
+## 1. Inventory
 
-`data/cves.json` contiene **34 CVEs `Critical`** publicados entre el 2026-08-24
-y el 2026-10-20. Los 7 más recientes (dos últimas releases estables) son los
-que se han convertido en casos ejecutables.
+`data/cves.json` contains **34 `Critical` CVEs** published between 2026-08-24
+and 2026-10-20. The 7 most recent ones (last two stable releases) are the ones
+turned into runnable cases.
 
-La severidad que importa es la de Chromium (`Critical` en el aviso). NVD suele
-puntuar más bajo y con retraso; ejemplo: CVE-2026-110922 es `Critical` para
-Chrome y CVSS 8.8 (`HIGH`) en NVD. No son contradictorios: miden cosas
-distintas (impacto potencial dentro del sandbox vs. puntuación genérica).
+The severity that matters is Chromium's (`Critical` in the advisory). NVD
+usually scores lower and later; for example CVE-2026-110922 is `Critical` for
+Chrome and CVSS 8.8 (`HIGH`) in NVD. They are not contradictory: they measure
+different things (potential impact inside the sandbox vs. a generic score).
 
-## 2. Parches recuperados (7/7)
+## 2. Recovered patches (7/7)
 
-| CVE | Bug | Repo | Commit | Tema |
-|-----|-----|------|--------|------|
-| CVE-2026-110922 | 568719351 | chromium | `d50992ebe4` | UAF de `NavigationRequest` en checks de prerender |
-| CVE-2026-113341 | 569165786 | skia | `02b14267cb` | workaround FBO Imagination en Ganesh |
-| CVE-2026-113279 | 570093145 | chromium | `83ce9f18d7` | image maps en `AXObjectCacheImpl` |
-| CVE-2026-113072 | 570638836 | chromium | `73dd2febfa` | pseudo-elementos en LCP |
-| CVE-2026-113280 | 570740320 | chromium | `3ab9f85874` | `FrameCaret::PaintCaret` y layout sucio |
-| CVE-2026-113271 | 571618833 | chromium | `15248c94bc` | referencia a `title` en `AXNodeObject` |
-| CVE-2026-113303 | 574041825 | chromium | `e193ceb7de` | `initialized_` sin lock en `WebRtcAudioDeviceImpl` |
+| CVE | Bug | Repo | Commit | Topic |
+|-----|-----|------|--------|-------|
+| CVE-2026-110922 | 568719351 | chromium | `d50992ebe4` | `NavigationRequest` UAF in prerender checks |
+| CVE-2026-113341 | 569165786 | skia | `02b14267cb` | Imagination FBO workaround in Ganesh |
+| CVE-2026-113279 | 570093145 | chromium | `83ce9f18d7` | image maps in `AXObjectCacheImpl` |
+| CVE-2026-113072 | 570638836 | chromium | `73dd2febfa` | pseudo-elements in LCP |
+| CVE-2026-113280 | 570740320 | chromium | `3ab9f85874` | `FrameCaret::PaintCaret` and dirty layout |
+| CVE-2026-113271 | 571618833 | chromium | `15248c94bc` | `title` reference in `AXNodeObject` |
+| CVE-2026-113303 | 574041825 | chromium | `e193ceb7de` | unsynchronized `initialized_` in `WebRtcAudioDeviceImpl` |
 
-Los diffs completos están en `patches/`. En 6 de 7 casos el commit incluye el
-test de regresión, que ha servido para derivar el testcase.
+Full diffs are in `patches/`. In 6 of 7 cases the commit includes the
+regression test, which was used to derive the testcase.
 
-## 3. Ejecución diferencial
+## 3. Differential run
 
-Comando:
+Command:
 
 ```bash
 node harness/run-case.mjs --all
 ```
 
-| CVE | Vulnerable (155.0.8059.84) | Parcheada (156.0.8078.47) | Veredicto |
-|-----|---------------------------|----------------------------|-----------|
-| CVE-2026-113072 | `entry.element` = `::before` | `entry.element` = `null` | **diferencia-conductual** |
-| CVE-2026-113279 | 800 iteraciones, sin crash | 800, sin crash | sin crash |
-| CVE-2026-113271 | 700 iteraciones, sin crash | 700, sin crash | sin crash |
-| CVE-2026-113280 | 1500 frames, sin crash | 1500, sin crash | sin crash |
-| CVE-2026-113303 | 120 ciclos, sin crash | 120, sin crash | sin crash |
-| CVE-2026-110922 | — | — | bloqueado (secuencia BFCache/SW) |
-| CVE-2026-113341 | — | — | no reproducible (driver Imagination) |
+| CVE | Vulnerable (155.0.8059.84) | Patched (156.0.8078.47) | Verdict |
+|-----|---------------------------|--------------------------|---------|
+| CVE-2026-113072 | `entry.element` = `::before` | `entry.element` = `null` | **behavioral difference** |
+| CVE-2026-113279 | 800 iterations, no crash | 800, no crash | no crash |
+| CVE-2026-113271 | 700 iterations, no crash | 700, no crash | no crash |
+| CVE-2026-113280 | 1500 frames, no crash | 1500, no crash | no crash |
+| CVE-2026-113303 | 120 cycles, no crash | 120, no crash | no crash |
+| CVE-2026-110922 | — | — | blocked (BFCache/SW sequence) |
+| CVE-2026-113341 | — | — | not reproducible (Imagination driver) |
 
-### CVE-2026-113072: única diferencia observable
+### CVE-2026-113072: the only observable difference
 
-Es el resultado más sólido del laboratorio. El mismo testcase, ejecutado contra
-las dos builds oficiales, da:
+This is the strongest result in the lab. The same testcase, run against both
+official builds, gives:
 
 ```json
 // 155.0.8059.84 (vulnerable)
 {"hasElement": true, "isTargetDiv": false, "tagName": "::before",
  "ctor": "Element", "parentTag": "DIV"}
 
-// 156.0.8078.47 (parcheada)
+// 156.0.8078.47 (patched)
 {"hasElement": false, "isTargetDiv": false, "tagName": null,
  "ctor": null, "parentTag": null}
 ```
 
-En 155 el observador LCP recibe el pseudo-elemento; en 156
-`Performance::CanExposeNode()` lo filtra y `element` es `null`. Esto demuestra
-que la ruta vulnerable existe y que el parche la corta. No demuestra por sí solo
-la corrupción de memoria: para eso hace falta ASAN.
+On 155 the LCP observer receives the pseudo-element; on 156
+`Performance::CanExposeNode()` filters it out and `element` is `null`. This
+proves the vulnerable path exists and that the patch cuts it. It does not by
+itself prove memory corruption: that requires ASAN.
 
-### Resto de casos
+### Remaining cases
 
-Los casos de accesibilidad, caret y WebRTC ejecutan la ruta vulnerable (a11y
-forzada con `--force-renderer-accessibility`, dispositivo de audio falso) pero
-**no abortan en builds release**. Es lo esperable:
+The accessibility, caret and WebRTC cases do exercise the vulnerable path
+(accessibility forced with `--force-renderer-accessibility`, fake audio device)
+but **do not abort in release builds**. That is expected:
 
-- UAF de `StringImpl` (113271) y de objetos AX (113279): el heap rara vez
-  colisiona sin ASAN.
-- Reentrada de layout en paint (113280): requiere DCHECK/ASAN o timing exacto.
-- Carrera del hilo de audio (113303): necesita backend de audio real y TSAN.
+- `StringImpl` UAF (113271) and AX object UAF (113279): the heap rarely
+  collides without ASAN.
+- Layout reentrancy during paint (113280): requires DCHECK/ASAN or exact timing.
+- Audio thread race (113303): needs a real audio backend and TSAN.
 
-Un "sin crash" aquí **no invalida** el CVE; solo indica que el entorno de
-detección es demasiado débil.
+A "no crash" here **does not invalidate** the CVE; it only means the detection
+environment is too weak.
 
-## 4. Limitaciones y siguientes pasos
+## 4. CVE-2026-110922: web-content reproducer (negative result)
 
-1. **Build ASAN.** Es el siguiente paso con mejor relación coste/beneficio.
-   `docs/ADDING_CVES.md` describe cómo compilar `is_asan=true`. Con ASAN, los
-   casos 113271/113279/113280/113303 tienen muchas más probabilidades de
-   reportar el uso después de free.
-2. **CVE-2026-110922.** Requiere un servidor que bloquee respuestas, Speculation
-   Rules y activación de Service Worker. Se puede adaptar el test del parche a
-   un test de navegador (`content_unittests`) en vez de intentarlo desde HTML.
-3. **CVE-2026-113341.** Sin GPU Imagination no hay reproducción posible. El
-   valor está en el análisis del workaround y su comparación con
+A dedicated reproducer (`harness/repro-110922.mjs`) was built with an embedded
+dynamic server: the static harness cannot stall a response, and the sequence
+needs one.
+
+```bash
+node harness/repro-110922.mjs \
+  --browser builds/155.0.8059.84/chrome-linux64/chrome \
+  --attempts 2 --delays 0,25,100
+```
+
+Two harness blockers were found and removed first: Playwright disables BFCache
+with `--disable-back-forward-cache`, and `Cache-Control: no-store` makes a
+document BFCache-ineligible. After that the control run restores with
+`persisted: true`.
+
+The eviction window is still unreachable:
+
+| Observation | Measurement |
+|-------------|-------------|
+| Service Worker v2 activation | ~900–1000 ms after `history.back()` |
+| BFCache restore | completes in milliseconds |
+| Pending prerender started at `back` | `startedAtBack=false` in every run |
+| Prerender 2..6 requests | all issued ~2 s before `back` |
+
+In this build the speculation-rules path starts every requested prerender
+instead of keeping the surplus in `pending_prerenders_`, so cancelling prerender
+1 does not synchronously start a queued one. The eviction therefore always lands
+before the restore (normal reload) or long after it (`persisted: true`), never
+inside `BeginNavigation()`.
+
+**Result: 0 crashes in 9+ attempts.** The bug is real, but it is not reachable
+with controllable timing from web content on this build. The regression test
+evicts synchronously from `DidStartNavigation`, which content cannot schedule.
+
+## 5. Limitations and next steps
+
+1. **ASAN build.** It is the next step with the best cost/benefit ratio.
+   `docs/ASAN.md` describes how to build with `is_asan=true`. With ASAN, cases
+   113271/113279/113280/113303 are much more likely to report the
+   use-after-free.
+2. **CVE-2026-110922.** Requires a server that stalls responses, Speculation
+   Rules and Service Worker activation. The patch's test can be adapted into a
+   browser test (`content_unittests`) instead of trying it from plain HTML.
+3. **CVE-2026-113341.** Without an Imagination GPU there is no possible
+   reproduction. The value is in analyzing the workaround and comparing it with
    `GLES2DecoderImpl`.
-4. **Falsos negativos.** Los casos de carrera se ejecutan un número limitado de
-   iteraciones. Aumentar `iterations` y ejecutar en paralelo mejora la tasa de
-   detección, pero no la garantiza.
+4. **False negatives.** Race cases run a limited number of iterations.
+   Increasing `iterations` and running in parallel improves the detection rate
+   but does not guarantee it.

@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Construye data/cves.json a partir del feed oficial de Chrome Releases.
+"""Build data/cves.json from the official Chrome Releases feed.
 
-Fuente: https://chromereleases.googleblog.com/feeds/posts/default/-/Stable%20updates
+Source: https://chromereleases.googleblog.com/feeds/posts/default/-/Stable%20updates
 
-El blog publica, por cada release estable, lineas con el formato:
+For every stable release the blog publishes lines in the form:
 
     [N/A][ 568719351 ] Critical CVE-2026-110922: Use after free in Prerender.
 
-De ahi extraemos severidad, componente, CVE y -- lo mas importante -- el bug ID
-de crbug.com, que es publico y permite localizar el fix commit.
+From there we extract severity, component, CVE and -- most importantly -- the
+crbug.com bug ID, which is public and lets us locate the fix commit.
 
-Uso:
+Usage:
     python3 scripts/sync_cves.py                 # online
-    python3 scripts/sync_cves.py --offline       # usa data/cache/feed.json
+    python3 scripts/sync_cves.py --offline       # uses data/cache/feed.json
     python3 scripts/sync_cves.py --min-severity High --days 60
 """
 from __future__ import annotations
@@ -39,7 +39,7 @@ ENTRY_RE = re.compile(
     r"(?P<severity>Critical|High|Medium|Low)\s+"
     r"(?P<cve>CVE-\d{4}-\d+):\s*(?P<desc>[^.]+)\."
 )
-# "updated to 155.0.8059.84" o, en promociones de milestone,
+# "updated to 155.0.8059.84" or, in milestone promotions,
 # "Chrome 156.0.8078.47 (Linux)"
 VERSION_RE = re.compile(
     r"(?:updated to|Chrome)\s+(?P<version>\d+\.\d+\.\d+\.\d+)"
@@ -97,7 +97,7 @@ def parse(feed: dict, min_severity: str, days: int | None) -> list[dict]:
                     "advisory": links[0] if links else "",
                 }
             )
-    # de-duplica manteniendo el aviso mas reciente
+    # de-duplicate keeping the most recent advisory
     seen: dict[str, dict] = {}
     for row in rows:
         seen.setdefault(row["cve"], row)
@@ -106,9 +106,9 @@ def parse(feed: dict, min_severity: str, days: int | None) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--offline", action="store_true", help="usar data/cache/feed.json")
+    ap.add_argument("--offline", action="store_true", help="use data/cache/feed.json")
     ap.add_argument("--min-severity", default="Critical", choices=SEVERITY_ORDER)
-    ap.add_argument("--days", type=int, default=None, help="ventana en dias (por defecto todo)")
+    ap.add_argument("--days", type=int, default=None, help="window in days (default: all)")
     ap.add_argument("--out", default=str(ROOT / "data" / "cves.json"))
     args = ap.parse_args()
 

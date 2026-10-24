@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Descarga una build concreta de Chrome for Testing (Linux x64).
+"""Download an exact Chrome for Testing build (Linux x64).
 
-Chrome for Testing publica builds historicas en:
+Chrome for Testing publishes historical builds at:
     https://storage.googleapis.com/chrome-for-testing-public/<version>/linux64/chrome-linux64.zip
 
-Eso permite fijar la version exacta afectada por un CVE y comparar contra la
-primera version parcheada. El binario se guarda en builds/<version>/.
+That makes it possible to pin the exact version affected by a CVE and compare
+it against the first patched one. The binary is stored in builds/<version>/.
 
-Uso:
+Usage:
     python3 scripts/fetch_chrome.py 155.0.8059.84 156.0.8078.47
     python3 scripts/fetch_chrome.py 155.0.8059.79 --force
 """
@@ -38,7 +38,7 @@ def human(n: float) -> str:
 def download(version: str, dest: Path, force: bool) -> Path:
     binary = dest / "chrome-linux64" / "chrome"
     if binary.exists() and not force:
-        print(f"[=] {version} ya presente en {binary}")
+        print(f"[=] {version} already present at {binary}")
         return binary
 
     url = f"{BASE}/{version}/{PLATFORM}/{ASSET}"
@@ -61,9 +61,9 @@ def download(version: str, dest: Path, force: bool) -> Path:
     with zipfile.ZipFile(zip_path) as zf:
         bad = zf.testzip()
         if bad:
-            raise RuntimeError(f"zip corrupto: {bad}")
-        # extractall() no restaura los permisos unix: sin esto falla
-        # chrome_crashpad_handler y el arranque aborta con SIGABRT.
+            raise RuntimeError(f"corrupt zip: {bad}")
+        # extractall() does not restore unix permissions: without this,
+        # chrome_crashpad_handler fails and startup aborts with SIGABRT.
         for info in zf.infolist():
             target = Path(zf.extract(info, dest))
             mode = (info.external_attr >> 16) & 0o777
@@ -72,7 +72,7 @@ def download(version: str, dest: Path, force: bool) -> Path:
     zip_path.unlink()
 
     binary.chmod(binary.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    print(f"[+] listo: {binary}")
+    print(f"[+] ready: {binary}")
     return binary
 
 

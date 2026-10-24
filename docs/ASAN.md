@@ -1,29 +1,29 @@
-# Build ASAN de Chromium
+# Chromium ASAN build
 
-Chrome for Testing son builds `release`: un UAF puede no abortar nunca. Para
-caracterizar de verdad los fallos del informe de explotabilidad hace falta un
-build con AddressSanitizer.
+Chrome for Testing ships `release` builds: a UAF may never abort. To actually
+characterize the bugs in the exploitability report you need a build with
+AddressSanitizer.
 
-## Coste realista
+## Realistic cost
 
-| Recurso | Estimación |
-|---------|-----------|
-| Disco | 100–150 GB (checkout + out/asan) |
-| RAM | 16 GB mínimo; 32 GB recomendable para enlazar |
-| Tiempo | 2–6 h según CPU (primer build) |
-| Red | ~50–80 GB de descarga |
+| Resource | Estimate |
+|----------|----------|
+| Disk | 100–150 GB (checkout + out/asan) |
+| RAM | 16 GB minimum; 32 GB recommended for linking |
+| Time | 2–6 h depending on CPU (first build) |
+| Network | ~50–80 GB of downloads |
 
-No es un paso que se pueda hacer "en un rato". Planifícalo.
+This is not something you can do "in a minute". Plan for it.
 
-## Automático
+## Automated
 
 ```bash
 chmod +x scripts/setup_asan.sh
 ./scripts/setup_asan.sh 155.0.8059.84
 ```
 
-El script clona `depot_tools`, hace `fetch chromium`, checkout del tag de la
-versión, `gclient sync`, genera `out/asan` con `is_asan=true` y compila.
+The script clones `depot_tools`, runs `fetch chromium`, checks out the release
+tag, runs `gclient sync`, generates `out/asan` with `is_asan=true` and builds.
 
 ## Manual
 
@@ -49,29 +49,29 @@ gn gen out/asan --args='
 autoninja -C out/asan chrome
 ```
 
-## Ejecutar un caso contra el build ASAN
+## Run a case against the ASAN build
 
-Edita `cases/<CVE>/case.json` y añade la ruta absoluta:
+Edit `cases/<CVE>/case.json` and add the absolute path:
 
 ```json
-{ "browser": "/home/tu-usuario/chromium/src/out/asan/chrome" }
+{ "browser": "/home/you/chromium/src/out/asan/chrome" }
 ```
 
-O pasa las rutas por CLI:
+Or pass the paths on the CLI:
 
 ```bash
 ASAN_OPTIONS=detect_leaks=0:abort_on_error=1:symbolize=1 \
   node harness/run-case.mjs CVE-2026-113271 \
-  --vuln /home/tu-usuario/chromium/src/out/asan/chrome \
+  --vuln /home/you/chromium/src/out/asan/chrome \
   --fixed builds/156.0.8078.47/chrome-linux64/chrome
 ```
 
-> El build ASAN ya contiene el fix si compilas 156. Para comparar de verdad,
-> compila la versión **vulnerable** con ASAN y ejecuta el caso solo contra ella
-> (`--fixed` puede apuntar a la build release parcheada; lo que importa es ver
-> el reporte ASAN en la vulnerable).
+> The ASAN build already contains the fix if you build 156. To compare
+> properly, build the **vulnerable** version with ASAN and run the case against
+> it (`--fixed` can point at the patched release build; what matters is seeing
+> the ASAN report on the vulnerable one).
 
-## Qué buscar en el reporte
+## What to look for in the report
 
 ```
 ERROR: AddressSanitizer: heap-use-after-free on address 0x...
@@ -84,24 +84,40 @@ previously allocated by thread T0 here:
     #0 ... operator new
 ```
 
-Preguntas que responde:
+Questions it answers:
 
-1. ¿Es un UAF real o solo un estado inconsistente?
-2. Tipo y tamaño del objeto liberado (clave para PartitionAlloc).
-3. ¿La pila de free es determinista o depende de timing?
-4. ¿El acceso es lectura o escritura?
+1. Is it a real UAF or just an inconsistent state?
+2. Type and size of the freed object (key for PartitionAlloc).
+3. Is the free stack deterministic or timing-dependent?
+4. Is the access a read or a write?
 
-Con eso se actualiza `findings/EXPLOITABILITY.md` con datos, no con
-especulación.
+With that data you update `findings/EXPLOITABILITY.md` with facts instead of
+speculation.
 
-## Alternativa para la carrera de WebRTC
+## Alternative for the WebRTC race
 
-CVE-2026-113303 es una carrera de datos: el sanitizer correcto es **TSAN**
-(`is_tsan=true`), no ASAN. Compila `out/tsan` con los mismos pasos cambiando
-`is_asan=true` por `is_tsan=true`.
+CVE-2026-113303 is a data race: the right sanitizer is **TSAN**
+(`is_tsan=true`), not ASAN. Build `out/tsan` with the same steps, replacing
+`is_asan=true` with `is_tsan=true`.
 
-## Notas
+## Reproducing CVE-2026-110922 deterministically
 
-- `is_component_build=false` es obligatorio para ASAN en Linux.
-- Si el enlace agota memoria, baja `symbol_level` a 0 o usa `use_thin_lto=false`.
-- No ejecutes el binario ASAN con `--no-sandbox` salvo en el contenedor del lab.
+The browser-process UAF cannot be scheduled from web content (see
+`cases/CVE-2026-110922/README.md`). The deterministic reproduction is the
+regression test that ships with the patch:
+
+```bash
+autoninja -C out/asan content_browsertests
+out/asan/content_browsertests \
+  --gtest_filter='*EvictBackForwardCacheDuringPrerenderActivationCheck*'
+```
+
+With an ASAN build the use-after-free is reported with the free/alloc stacks;
+without a fix it aborts, with the fix it passes.
+
+## Notes
+
+- `is_component_build=false` is required for ASAN on Linux.
+- If linking runs out of memory, lower `symbol_level` to 0 or set
+  `use_thin_lto=false`.
+- Do not run the ASAN binary with `--no-sandbox` outside the lab container.
