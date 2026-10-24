@@ -1,4 +1,4 @@
-.PHONY: install sync sync-rce sync-priority fixes fetch case all repro-110922 selfdrive-110922 clean
+.PHONY: install sync sync-rce sync-priority fixes fetch case all repro-110922 selfdrive-110922 selfdrive-110922-debug clean
 
 CASE ?= CVE-2026-113072
 VULN ?= builds/155.0.8059.84/chrome-linux64/chrome
@@ -38,6 +38,10 @@ repro-110922:
 # CVE-2026-110922: CDP-free driver that actually creates a prerender host.
 selfdrive-110922:
 	node harness/selfdrive-110922.mjs --browser $(VULN) --attempts 2 --delay 0 --count 2
+
+# Same, keeping the core dump for manual gdb inspection (docs/GDB.md).
+selfdrive-110922-debug:
+	node harness/selfdrive-110922.mjs --browser $(VULN) --attempts 2 --delay 950 --count 2 --keep-core
 
 # removes downloaded binaries (leaves data and patches untouched)
 clean:

@@ -33,12 +33,20 @@
  * Exit code: 42 if the browser process crashed, 0 otherwise.
  */
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startScenarioServer } from "./lib/scenario-server.mjs";
+import {
+  analyzeCore,
+  digest,
+  dropCore,
+  findCore,
+  findGdb,
+} from "./lib/crash-report.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const RAW_DIR = join(process.cwd(), "findings", "raw");
 
 function parseArgs(argv) {
   const out = {
@@ -49,6 +57,8 @@ function parseArgs(argv) {
     hint: true,
     timeoutMs: 25000,
     headed: false,
+    gdb: null,
+    keepCore: false,
   };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -59,6 +69,8 @@ function parseArgs(argv) {
     else if (a === "--hint0") out.hint = false;
     else if (a === "--timeout") out.timeoutMs = Number(argv[++i]);
     else if (a === "--headed") out.headed = true;
+    else if (a === "--gdb") out.gdb = argv[++i];
+    else if (a === "--keep-core") out.keepCore = true;
   }
   return out;
 }
@@ -79,6 +91,9 @@ function launchArgs({ url, profile, headed }) {
     "--disable-background-networking",
     "--disable-sync",
     "--metrics-recording-only",
+    // Let the kernel write a core dump instead of Crashpad swallowing the
+    // signal: the lab analyses the browser process with gdb.
+    "--disable-breakpad",
     // Keep Prerender2ReuseHost at its production default: the lab must model
     // the shipped configuration, not a tuned one.
     "--disable-features=Translate,MediaRouter",
@@ -93,9 +108,20 @@ async function attempt(n) {
   const url = `${base}/empty.html?drive=1&delay=${opts.delay}&count=${opts.count}` +
     `${opts.hint ? "" : "&hint=0"}`;
 
-  const child = spawn(opts.browser, launchArgs({ url, profile, headed: opts.headed }), {
-    stdio: ["ignore", "ignore", "pipe"],
-  });
+  const child = spawn(
+    "/bin/sh",
+    [
+      "-c",
+      'ulimit -c unlimited 2>/dev/null; exec "$@"',
+      "sh",
+      opts.browser,
+      ...launchArgs({ url, profile, headed: opts.headed }),
+    ],
+    {
+      cwd: profile,
+      stdio: ["ignore", "ignore", "pipe"],
+    },
+  );
   let stderr = "";
   child.stderr.on("data", (d) => {
     stderr += d.toString();
@@ -155,12 +181,38 @@ async function attempt(n) {
     startedAtBack,
     reports: state.reports.map((r) => ({ at: backAt == null ? null : r.at - backAt, ...r.q })),
     phase: state.reports
-      .map((r) => r.q.outcome + (r.q.outcome === "pageshow" ? `(persisted=${r.q.persisted})` : ""))
+      .map((r) => r.q.outcome + (r.q.outcome === "pageshow" ? `(persisted=${r.q.persisted})` : "") + (r.q.open != null ? `(open=${r.q.open})` : ""))
       .join(" -> "),
     timeline,
   };
 
   server.close();
+
+  // Normal binary tooling: keep the kernel core and analyse it with gdb. No
+  // ASAN and no debug symbols, so this reports signal, faulting address, the
+  // instruction and a raw backtrace from the stripped release binary.
+  if (crashed) {
+    await sleep(500); // let the kernel finish writing the core
+    const core = findCore(profile);
+    const gdb = findGdb(opts.gdb);
+    const report = analyzeCore({ gdb, binary: opts.browser, core });
+    result.core = { gdb, path: core, available: report.available };
+    if (report.available && core) {
+      mkdirSync(RAW_DIR, { recursive: true });
+      const out = join(RAW_DIR, `CVE-2026-110922.attempt${n + 1}.core.txt`);
+      writeFileSync(out, report.text);
+      result.core.report = out;
+      result.core.digest = digest(report.text);
+    } else if (report.text) {
+      result.core.note = report.text;
+    }
+    console.log(
+      `    core: ${core ?? "missing"}${result.core.report ? ` -> ${result.core.report}` : ""}`,
+    );
+    if (result.core.digest) console.log(result.core.digest.split("\n").map((l) => `    ${l}`).join("\n"));
+    if (!opts.keepCore) dropCore(core);
+  }
+
   try {
     rmSync(profile, { recursive: true, force: true });
   } catch {}
@@ -185,6 +237,13 @@ for (let i = 0; i < opts.attempts && !crashed; i++) {
       `exit=${r.exit ? `${r.exit.code ?? r.exit.signal}` : "running"}${r.killed ? " (killed)" : ""}`,
   );
   console.log(`    reports: ${r.phase}`);
+  const after = r.reports.filter((x) => x.at != null);
+  if (after.length) {
+    console.log(
+      "    timeline: " +
+        after.map((x) => `${x.at >= 0 ? "+" : ""}${x.at}ms:${x.outcome}${x.persisted != null ? `(${x.persisted})` : ""}`).join(" "),
+    );
+  }
   for (const e of r.timeline) {
     console.log(`    req ${e.deltaMs >= 0 ? "+" : ""}${e.deltaMs}ms ${e.search} purpose=${e.purpose || "-"}`);
   }

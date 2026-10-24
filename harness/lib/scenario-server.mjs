@@ -32,26 +32,32 @@ self.addEventListener('message', (e) => {
 `;
 
 function page({ title, drive, delayMs, prerenderCount, hint, origin }) {
-  const rules = JSON.stringify({
+  const rule1 = JSON.stringify({
     prerender: [
       {
         source: "list",
         urls: [origin + "/empty.html?prerender=1"],
         ...(hint ? { expects_no_vary_search: 'params=("prerender")' } : {}),
       },
-      ...(prerenderCount > 1
-        ? [
-            {
-              source: "list",
-              urls: Array.from(
-                { length: prerenderCount - 1 },
-                (_, k) => `${origin}/empty.html?prerender${k + 2}`,
-              ),
-            },
-          ]
-        : []),
     ],
   });
+  // Injected only once prerender 1 is in flight. The upstream test adds the
+  // second prerender after WaitForRequest() for exactly this reason: while a
+  // prerender is still starting it owns running_prerender_host_id_, and later
+  // triggers stay in pending_prerenders_ instead of starting immediately.
+  const queuedRules = prerenderCount > 1
+    ? JSON.stringify({
+        prerender: [
+          {
+            source: "list",
+            urls: Array.from(
+              { length: prerenderCount - 1 },
+              (_, k) => `${origin}/empty.html?prerender${k + 2}`,
+            ),
+          },
+        ],
+      })
+    : null;
 
   return `${PAGE_HEAD}<title>${title}</title>
 <script>
@@ -93,17 +99,21 @@ window.addEventListener('pagehide', (e) => {
   if (new URL(location.href).searchParams.has('next')) {
     // Phase 2: install rules, queue prerender 2, race the SW update with back.
     await report('outcome=phase2');
-    const s = document.createElement('script');
-    s.type = 'speculationrules';
-    s.textContent = ${JSON.stringify(rules)};
-    document.head.appendChild(s);
+    const inject = (json) => {
+      const s = document.createElement('script');
+      s.type = 'speculationrules';
+      s.textContent = json;
+      document.head.appendChild(s);
+    };
+    inject(${JSON.stringify(rule1)});
 
     // Wait until the server has the in-flight prerender request.
     for (let i = 0; i < 120; i++) {
       if ((await status()).stall > 0) break;
       await sleep(50);
     }
-    await report('outcome=stalled');
+    await report('outcome=stalled&open=' + (await status()).stallOpen);
+    ${queuedRules ? `inject(${JSON.stringify(queuedRules)});` : ""}
     await sleep(400); // let prerender 2 sit in pending_prerenders_
 
     await fetch('/bump');
@@ -128,7 +138,7 @@ window.addEventListener('pagehide', (e) => {
     await report('outcome=waiting&got=' + Boolean(waiting));
     if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
     await sleep(${delayMs});
-    await report('outcome=backing');
+    await report('outcome=backing&open=' + (await status()).stallOpen);
     history.back();
     return;
   }
@@ -152,6 +162,7 @@ window.addEventListener('pagehide', (e) => {
 export function startScenarioServer({ servePrerender1 = false, origin = "http://127.0.0.1" } = {}) {
   const state = {
     stall: 0,
+    stallOpen: 0,
     prerenderRequested: 0,
     swVersion: 1,
     sw2ActivatedAt: null,
@@ -204,6 +215,13 @@ export function startScenarioServer({ servePrerender1 = false, origin = "http://
         // No-Vary-Search *hint* is the only thing that can match it.
         if (!servePrerender1) {
           state.stall++;
+          state.stallOpen++;
+          // A closed connection means Chrome cancelled the prerender host;
+          // it is then no longer the running host and cannot be the one that
+          // FindPotentialHostToActivate() cancels at `back`.
+          req.on("close", () => {
+            state.stallOpen = Math.max(0, state.stallOpen - 1);
+          });
           return; // intentionally no response
         }
         return send(200, "text/html; charset=utf-8", page({

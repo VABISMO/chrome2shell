@@ -112,9 +112,16 @@ DevTools/CDP session without tab-target support disables prerendering
 (`kPrerenderingDisabledByDevTools`), so prerender bugs must be driven without
 Playwright.
 
-## 7. ASAN builds (optional, for real UAFs)
+## 7. Crash analysis (optional, for real UAFs)
 
-Chrome for Testing does not ship sanitizer builds. For reliable detection:
+Two paths, in increasing cost:
+
+1. **Release binary + core + gdb.** No build required; the harness enables
+   kernel core dumps and runs gdb in batch mode. See [`GDB.md`](GDB.md).
+   Fast to set up, but a UAF only crashes if the freed slot is unmapped or
+   reused as an incompatible object.
+2. **ASAN build.** Chrome for Testing does not ship sanitizer builds. For
+   reliable detection:
 
 ```bash
 # requirements: depot_tools, ~100 GB free

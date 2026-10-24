@@ -107,6 +107,23 @@ All 12 recovered patches (7 Oct-2026 cases + these 5) contain enough context to
 derive a crash-only reproducer; 10 of them add or change a regression test.
 That test is the specification used for the next round of cases.
 
+**CVE-2026-110922 is not missing from this backlog:** it is the prerender UAF in
+the October table above. Its patch (`d50992ebe4`) is recovered, and its
+CDP-free driver is `harness/selfdrive-110922.mjs`. What is still missing is the
+synchronous eviction: the stalled prerender host is alive at `history.back()`
+(`open=1`), the BFCache restore is evicted ~57 ms later by Service Worker
+activation, and a 600–1200 ms delay sweep produced 0 crashes in 9 runs. The
+deterministic reproduction is the patch's C++ test, which needs a debug build
+and gdb breakpoints, not ASAN.
+
+### Debugging without ASAN
+
+Release binaries can still be used with normal tooling: the harness enables
+kernel core dumps, disables Crashpad, and analyses the core with `gdb` in batch
+mode (`bt`, registers, faulting instruction, module map). Full instructions are
+in [`docs/GDB.md`](docs/GDB.md); cores land in `findings/raw/` and are deleted
+after analysis unless `--keep-core` is passed.
+
 **Reality check on reproduction:** 6 of the 7 cases are memory corruptions that
 do not reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
 (1) confirm the vulnerable path, (2) compare vulnerable vs. patched builds and
@@ -156,7 +173,8 @@ chrome-cve-lab/
 │   ├── run-case.mjs       # run a case on vulnerable vs. patched builds
 │   ├── repro-110922.mjs   # CVE-2026-110922, Playwright driver (control only)
 │   ├── selfdrive-110922.mjs  # CVE-2026-110922, CDP-free driver
-│   └── lib/scenario-server.mjs  # shared server + in-page orchestration
+│   ├── lib/scenario-server.mjs  # shared server + in-page orchestration
+│   └── lib/crash-report.mjs     # core dump -> gdb batch report
 ├── cases/<CVE>/           # case.json + testcase.html + root-cause README
 ├── patches/               # fix patches (evidence)
 ├── docs/                  # ADDING_CVES.md, ASAN.md
@@ -169,8 +187,10 @@ Key documents:
   was not.
 - [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md) — per-CVE
   exploitability assessment (reachability, lifetime, mitigations, level).
+- [`docs/GDB.md`](docs/GDB.md) — release-build crashing with core dumps and
+  gdb, no ASAN build required.
 - [`docs/ASAN.md`](docs/ASAN.md) — sanitizer build to characterize the UAFs
-  (the real next step).
+  (the strongest detector when a build is affordable).
 
 ## Requirements
 
@@ -201,6 +221,10 @@ node harness/run-case.mjs --all
 
 # 5. CVE-2026-110922 without DevTools (prerendering is disabled under CDP)
 node harness/selfdrive-110922.mjs --browser /usr/lib/chromium/chromium
+
+# 6. on a crash, keep the core and inspect the gdb report
+node harness/selfdrive-110922.mjs --browser ./builds/.../chrome --keep-core
+cat findings/raw/CVE-2026-110922.attempt1.core.txt
 ```
 
 The oracle exits `42` when it detects a crash and `0` otherwise. Results are

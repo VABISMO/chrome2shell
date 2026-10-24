@@ -162,27 +162,67 @@ The eviction window is still unreachable:
 
 | Observation | Measurement |
 |-------------|-------------|
-| Service Worker v2 activation | ~900–1000 ms after `history.back()` |
+| Service Worker v2 activation | ~900–1000 ms after `skipWaiting` |
 | BFCache restore | completes in milliseconds |
-| Pending prerender started at `back` | `startedAtBack=false` in every run |
+| Pending prerender started at `back` | no new request in every run |
 | `queued-load` beacon (prerender 2 committed) | never emitted |
 | Final `pageshow` | `persisted=false` (restore was replaced) |
-| Prerender 1 cancellation | does **not** synchronously start prerender 2 |
+| Prerender 1 connection open at `back` | yes (`open=1`), so it is still the running host |
+| Delay sweep 600–1200 ms | 0 crashes in 9 runs |
 
-The last row matters: the speculation-rules path issues the queued URL early
-as a prefetch and the stalled host is only cancelled later, so cancelling
-prerender 1 does not synchronously start a pending one inside
-`FindPotentialHostToActivate()`. The Service Worker activation that evicts the
-BFCache entry happens ~1 s *after* `back`, as a separate task; the restore has
-already completed (or been replaced by a normal load) by then. The eviction
-never lands inside `BeginNavigation()`.
+The order at `--delay 950` is the clearest measurement:
 
-**Result: 0 crashes in 20+ attempts across both drivers.** The bug is real, but
+```
+-954ms waiting -> +0ms backing -> +51ms sw2-activated
+  -> +57ms pagehide(persisted=true) -> +69ms pageshow(persisted=false)
+```
+
+`history.back()` at `+0` starts the BFCache restore. The Service Worker
+activation that evicts the entry lands at `+51 ms`, i.e. **57 ms after** the
+restore began, as a separate task. It destroys the restore navigation and the
+page reloads normally (`persisted=false`), but it cannot land inside
+`BeginNavigation()`.
+
+One caveat on the `?prerender2` request: it is issued right after the rule is
+injected, with `Sec-Purpose: prefetch;prerender`, and the page's script never
+runs (no `queued-load` beacon). The pending host is therefore prefetched while
+it waits in `pending_prerenders_`; the early request is not proof that the host
+started. Either way, cancelling prerender 1 at `back` does not produce a new
+navigation start in the same stack.
+
+**Result: 0 crashes in 30+ attempts across both drivers.** The bug is real, but
 it is not reachable with controllable timing from web content on this build.
 The regression test evicts synchronously from `DidStartNavigation`, which
 content cannot schedule.
 
-## 5. Patch recovery for the in-the-wild backlog
+## 5. Release-build crashes without ASAN (core + gdb)
+
+ASAN needs a multi-hour build, so the lab also supports the ordinary
+binary-debugging path, documented in [`docs/GDB.md`](../docs/GDB.md):
+
+- the harness spawns the browser through `sh -c 'ulimit -c unlimited; exec "$@"'`
+  with the profile as working directory and `--disable-breakpad`, so the kernel
+  writes a core instead of Crashpad swallowing the signal;
+- on a crash it runs `gdb -q -batch` over the core with `bt`, registers,
+  `x/i $rip` and `info proc mappings`, writes the full output to
+  `findings/raw/<CVE>.attemptN.core.txt` and prints a digest;
+- the core is deleted afterwards unless `--keep-core` is passed.
+
+The release binary is stripped, so Chromium frames are addresses, but the
+signal, faulting address, instruction and containing module are enough to
+separate a browser-process `SIGSEGV` from an unrelated CHECK (`SIGABRT`).
+
+The pipeline was validated end to end with a deliberately crashing binary:
+the harness produced the core, resolved `#0 main () at crashy.c:1`, reported
+`crash=true` and exited `42`.
+
+Caveat: a UAF only faults when the freed slot is unmapped or reused as an
+incompatible object. PartitionAlloc keeps it mapped, so a release build may not
+crash even with a real UAF. That is why the C++ regression test remains the
+deterministic reproduction, and gdb is used to breakpoint it rather than to
+wait for a fault.
+
+## 6. Patch recovery for the in-the-wild backlog
 
 Working newest-first through `data/rce_priority.json`, the fix commit was
 recovered for the 5 most recent in-the-wild CVEs after the October 2026 cases:
@@ -213,19 +253,22 @@ Two retrieval problems had to be fixed in `scripts/find_fixes.py`:
 The submodule searches also work without a roll hit: `CVE-2026-3910` was found
 directly in `v8/v8` (`7076ba135f`, "[maglev] disable Phi untagging").
 
-## 6. Limitations and next steps
+## 7. Limitations and next steps
 
 1. **ASAN build.** It is the next step with the best cost/benefit ratio.
    `docs/ASAN.md` describes how to build with `is_asan=true`. With ASAN, cases
    113271/113279/113280/113303 are much more likely to report the
    use-after-free.
 2. **CVE-2026-110922.** Web content now reaches every step except the
-   synchronous eviction. The remaining options are the patch's own
-   `content_browsertests` regression test on an ASAN build
+   synchronous eviction: the stalled host is alive at `back`, the restore is
+   evicted ~57 ms later by SW activation, and the delay sweep (600–1200 ms)
+   does not move the eviction into `BeginNavigation()`. Remaining options are
+   the patch's own `content_browsertests` regression test on a debug build
    (`--gtest_filter='*EvictBackForwardCacheDuringPrerenderActivationCheck*'`),
-   or a browser-process debugger breakpoint in `DidStartNavigation`. Do not
-   retry this CVE through Playwright: CDP without tab-target support disables
-   prerendering (status 69).
+   breakpointed with gdb in `NavigationRequest::BeginNavigation`, or a
+   browser-process debugger breakpoint in `DidStartNavigation`. Do not retry
+   through Playwright: CDP without tab-target support disables prerendering
+   (status 69).
 3. **CVE-2026-113341.** Without an Imagination GPU there is no possible
    reproduction. The value is in analyzing the workaround and comparing it with
    `GLES2DecoderImpl`.
