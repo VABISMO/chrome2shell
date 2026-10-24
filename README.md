@@ -20,12 +20,32 @@ commits.
 
 ## TL;DR — what we found
 
-The last two stable releases (October 15 and 20, 2026) contain **7 CVEs rated
-`Critical`** by the Chrome team:
+**Scope is RCE-first.** The lab only keeps flaws that can plausibly lead to
+code execution in the browser (memory corruption in V8/WebAssembly, GPU/Skia,
+Mojo/IPC, media, or a sandbox escape). Bugs that are only policy bypasses, UI
+spoofing, info leaks or DoS are catalogued but not worked on.
+
+The official *Stable updates* feed was paged back to **2023-10-01** (three
+years). That yields:
+
+| Dataset | Rows | What it is |
+|---------|------|------------|
+| `data/cves.json` | **1,199** | every `High`/`Critical` stable CVE since 2023-10 |
+| `data/rce_cves.json` | **879** | memory-safety bugs with an RCE path, or exploited in the wild |
+| `data/rce_priority.json` | **142** | `Critical` memory-safety + all 20 in-the-wild CVEs |
+
+Classification is a documented heuristic (`scripts/sync_cves.py`): the bug
+class comes from the advisory text ("Use after free in Prerender"), and it is
+ranked `high` when the component is a direct code-execution surface, `medium`
+when the bug still needs a reachable trigger or an extra primitive, and `low`
+for non-memory-safety classes and plain out-of-bounds *reads*.
+
+The two most recent releases (October 15 and 20, 2026) contain **7 CVEs rated
+`Critical`**, which became the first lab cases:
 
 | CVE | Component | Type | Bug ID | Fix commit | Reproducible |
 |-----|-----------|------|--------|-----------|--------------|
-| CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⚠️ needs BFCache+SW |
+| CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⚠️ blocked (see below) |
 | CVE-2026-113341 | Skia / Ganesh | UAF (driver) | 569165786 | `02b14267` (skia) | ❌ Imagination hardware |
 | CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 a11y stress |
 | CVE-2026-113072 | CSS / LCP | Mem. corruption | 570638836 | `73dd2febfa` | ✅ behavioral |
@@ -39,12 +59,60 @@ lands in a public repo with `Fixed: <bug_id>` in the commit message. That makes
 it possible to recover the exact patch and derive the root cause.
 `scripts/find_fixes.py` automates it: 7/7 found.
 
-**Reality check on reproduction:** 6 of the 7 are memory corruptions that do not
-reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
+### Exploited in the wild since 2023-10
+
+These 20 are the highest-priority targets: Google's own advisory says an
+exploit exists in the wild. They are the natural first backlog for the lab.
+
+| Date | CVE | Component | Fixed in |
+|------|-----|-----------|----------|
+| 2026-09-03 | CVE-2026-85046 | Type confusion in V8 | 152.0.7977.82 |
+| 2026-03-31 | CVE-2026-5281 | Use after free in Dawn | 146.0.7680.177 |
+| 2026-03-13 | CVE-2026-3909 | Out of bounds write in Skia | 146.0.7680.80 |
+| 2026-03-12 | CVE-2026-3910 | Inappropriate implementation in V8 | 146.0.7680.75 |
+| 2026-02-13 | CVE-2026-2441 | Use after free in CSS | 145.0.7632.75 |
+| 2025-12-10 | CVE-2025-14174 | Out of bounds memory access in ANGLE | 143.0.7499.109 |
+| 2025-11-17 | CVE-2025-13223 | Type confusion in V8 | 142.0.7444.175 |
+| 2025-09-17 | CVE-2025-10585 | Type confusion in V8 | 140.0.7339.185 |
+| 2025-07-15 | CVE-2025-6558 | Incorrect validation in ANGLE and GPU | 138.0.7204.157 |
+| 2025-06-30 | CVE-2025-6554 | Type confusion in V8 | 138.0.7204.96 |
+| 2025-06-02 | CVE-2025-5419 | Out of bounds read and write in V8 | 137.0.7151.68 |
+| 2025-03-25 | CVE-2025-2783 | Incorrect handle in Mojo (Windows) | 134.0.6998.177 |
+| 2025-03-10 | CVE-2025-24201 | Out of bounds write in GPU (Mac) | 134.0.6998.88 |
+| 2024-05-23 | CVE-2024-5274 | Type confusion in V8 | 125.0.6422.112 |
+| 2024-05-15 | CVE-2024-4947 | Type confusion in V8 | 125.0.6422.60 |
+| 2024-05-13 | CVE-2024-4761 | Out of bounds write in V8 | 124.0.6367.207 |
+| 2024-05-09 | CVE-2024-4671 | Use after free in Visuals | 124.0.6367.201 |
+| 2024-01-16 | CVE-2024-0519 | Out of bounds memory access in V8 | 120.0.6099.234 |
+| 2023-12-20 | CVE-2023-7024 | Heap buffer overflow in WebRTC | 120.0.6099.129 |
+| 2023-11-28 | CVE-2023-6345 | Integer overflow in Skia | 119.0.6045.199 |
+
+**Reality check on reproduction:** 6 of the 7 cases are memory corruptions that
+do not reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
 (1) confirm the vulnerable path, (2) compare vulnerable vs. patched builds and
 (3) serve as a base for an ASAN build. Per-CVE details are in
 [`findings/RESULTS.md`](findings/RESULTS.md) and
 [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md).
+
+### CVE-2026-110922: what the lab established
+
+Two findings are worth recording because they cost several wrong attempts:
+
+1. **DevTools disables prerendering.** Any CDP session without tab-target
+   support makes `devtools_instrumentation::IsPrerenderAllowed()` return false,
+   and Chromium rejects every speculation rule with `PrerenderFinalStatus` 69
+   (`kPrerenderingDisabledByDevTools`, not reuse). A Playwright-driven browser
+   can never reach this bug; `harness/selfdrive-110922.mjs` launches Chromium
+   with no debugging port and lets the page drive itself.
+2. **The eviction is asynchronous.** Without DevTools the prerender really
+   runs and the sequence completes, but Service Worker v2 activation that
+   evicts the BFCache entry happens ~1 s after `history.back()`, and cancelling
+   the stalled prerender does not synchronously start the pending one. The
+   destroy never lands inside `BeginNavigation()`: 0 crashes in 20+ attempts.
+
+The canonical reproduction is the patch's own
+`PrerenderBackForwardCacheBrowserTest.EvictBackForwardCacheDuringPrerenderActivationCheck`
+on an ASAN build. No exploit code is involved or needed.
 
 ---
 
@@ -53,9 +121,11 @@ reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
 ```
 chrome-cve-lab/
 ├── data/
-│   ├── cves.json          # inventory generated from the official feed
+│   ├── cves.json          # High/Critical inventory since 2023-10
+│   ├── rce_cves.json      # RCE-relevant subset
+│   ├── rce_priority.json  # Critical memory-safety + in-the-wild
 │   ├── fixes.json         # CVE -> fix commit + patch
-│   └── cache/feed.json    # feed snapshot (--offline mode)
+│   └── cache/feed.json    # paged feed snapshot (--offline mode)
 ├── scripts/
 │   ├── sync_cves.py       # Chrome Releases RSS -> data/cves.json
 │   ├── find_fixes.py      # bug ID -> fix commit -> patches/<CVE>.patch
@@ -64,7 +134,9 @@ chrome-cve-lab/
 ├── harness/
 │   ├── oracle.mjs         # load a URL and detect crashes (renderer/browser)
 │   ├── run-case.mjs       # run a case on vulnerable vs. patched builds
-│   └── repro-110922.mjs   # CVE-2026-110922 reproducer (dynamic server)
+│   ├── repro-110922.mjs   # CVE-2026-110922, Playwright driver (control only)
+│   ├── selfdrive-110922.mjs  # CVE-2026-110922, CDP-free driver
+│   └── lib/scenario-server.mjs  # shared server + in-page orchestration
 ├── cases/<CVE>/           # case.json + testcase.html + root-cause README
 ├── patches/               # fix patches (evidence)
 ├── docs/                  # ADDING_CVES.md, ASAN.md
@@ -92,8 +164,10 @@ Key documents:
 ```bash
 npm install
 
-# 1. critical CVE inventory (last 60 days)
-python3 scripts/sync_cves.py --min-severity Critical --days 60
+# 1. three-year inventory, then the RCE-focused views
+python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High
+python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High --rce-only --out data/rce_cves.json
+python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High --priority --out data/rce_priority.json
 
 # 2. locate patches (bug ID -> commit -> patch)
 python3 scripts/find_fixes.py
@@ -104,6 +178,9 @@ python3 scripts/fetch_chrome.py 155.0.8059.84 156.0.8078.47
 # 4. run one case (or all of them)
 node harness/run-case.mjs CVE-2026-113072
 node harness/run-case.mjs --all
+
+# 5. CVE-2026-110922 without DevTools (prerendering is disabled under CDP)
+node harness/selfdrive-110922.mjs --browser /usr/lib/chromium/chromium
 ```
 
 The oracle exits `42` when it detects a crash and `0` otherwise. Results are

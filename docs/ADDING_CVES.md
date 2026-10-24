@@ -3,11 +3,33 @@
 ## 1. Inventory
 
 ```bash
-python3 scripts/sync_cves.py --min-severity High --days 30
+# full High/Critical inventory since a date (paged feed)
+python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High
+
+# RCE-relevant subset (memory-safety bug with a plausible code-exec path,
+# plus everything exploited in the wild)
+python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High \
+  --rce-only --out data/rce_cves.json
+
+# highest-priority backlog: Critical memory-safety + all in-the-wild CVEs
+python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High \
+  --priority --out data/rce_priority.json
 ```
 
-Generates `data/cves.json` from the official feed. Fields: `cve`, `severity`,
-`component`, `bug_id`, `fixed_version`, `release_date`, `advisory`.
+The script pages the official *Stable updates* feed (`start-index`) until it
+crosses `--since`, then writes `data/cves.json`. Fields: `cve`, `severity`,
+`component`, `bug_id`, `fixed_version`, `release_date`, `advisory`, plus
+`rce_relevance` (`high`/`medium`/`low`), `rce_rationale` and
+`exploited_in_wild`.
+
+Classification is a heuristic on the advisory text: the bug class comes from
+the phrase before "in" ("Use after free in Prerender") and the component from
+the phrase after. Plain out-of-bounds *reads* and non-memory-safety classes are
+`low`; the `--rce-only` view drops them. `--offline` reuses the cached feed.
+
+Only work on CVEs with a plausible browser RCE path. Policy bypasses, UI
+spoofing, info leaks and DoS are catalogued in `data/cves.json` but are out of
+scope for cases.
 
 ## 2. Locate the patch
 
@@ -82,6 +104,13 @@ node harness/run-case.mjs CVE-2026-XXXXX --headed   # real caret/paint
 
 Results: `findings/CVE-2026-XXXXX.json` (comparison) and
 `findings/raw/<CVE>.<vulnerable|fixed>.json` (raw oracle output).
+
+If the bug needs prerendering, service workers, or a stalled response, the
+static file server is not enough. See `harness/repro-110922.mjs` (dynamic
+server) and `harness/selfdrive-110922.mjs` (no CDP) as templates. Note that any
+DevTools/CDP session without tab-target support disables prerendering
+(`kPrerenderingDisabledByDevTools`), so prerender bugs must be driven without
+Playwright.
 
 ## 7. ASAN builds (optional, for real UAFs)
 
