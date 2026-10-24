@@ -1,10 +1,23 @@
 {
+  "CVE-2026-3910": {
+    "bug_id": "491410818",
+    "fix": {
+      "repo": "v8/v8",
+      "sha": "7076ba135fab58910afe9bc8a828dfe1e40c4355",
+      "subject": "[maglev] disable Phi untagging",
+      "message": "[maglev] disable Phi untagging\n\nThere are currently a bit too many issues with Phi untagging; let's\ndisable it by default until we get things under control.\n\nBug: 491410818\nChange-Id: I98a4884b5374fad9ac98df0ab57c4203a1ce8403\nReviewed-on: https://chromium-review.googlesource.com/c/v8/v8/+/7653638\nReviewed-by: Michael Lippautz <mlippautz@chromium.org>\nCommit-Queue: Michael Lippautz <mlippautz@chromium.org>\nCommit-Queue: Darius Mercadier <dmercadier@chromium.org>\nAuto-Submit: Darius Mercadier <dmercadier@chromium.org>\nCr-Commit-Position: refs/heads/main@{#105711}",
+      "date": "2026-03-10T18:01:59.000+01:00",
+      "url": "https://github.com/v8/v8/commit/7076ba135fab58910afe9bc8a828dfe1e40c4355",
+      "patch": "patches/CVE-2026-3910.patch"
+    }
+  },
   "CVE-2026-113341": {
     "bug_id": "569165786",
     "fix": {
       "repo": "google/skia",
       "sha": "02b14267cb023e7ec9fc52618bd12464ceb6afb7",
       "subject": "[ganesh] Imagination FBO workaround v2",
+      "message": "[ganesh] Imagination FBO workaround v2\n\nOverhaul ensure_previous_framebuffer_not_deleted workaround to prevent\ndriver use-after-free on FBO deletion.\n\nThe previous workaround had several flaws:\n1. It only rebound FBO 0 immediately before deletion, which actually left the FBO being deleted as the driver's \"previously bound\" FBO. Imagination drivers retain an internal reference to the previous complete FBO, leading to a use-after-free when that FBO is deleted.\n\n2. In surfaceless contexts, FBO 0 is undefined/incomplete, so the driver\nretains its reference to the earlier complete FBO anyway.\n\n3. It only checked the draw framebuffer binding. Read framebuffers left\nbound after blits or MSAA resolves were deleted while still bound.\n\n4. Context resets caused Ganesh to assume FBO 0 without issuing a bind,\ncausing subsequent deletions to skip the unbind check.\n\nTo fix this, mirror Chromium's GLES2DecoderImpl workaround:\n- Allocate a 1x1 complete guard FBO backed by a renderbuffer (to avoid disturbing texture state) that is held for the context's lifetime and intentionally never deleted.\n\n- In bindFramebuffer(), pre-bind the guard FBO before every target binding so no Skia FBO is ever left behind as the driver's previous binding.\n\n- In deleteFramebuffer(), unconditionally rebind FBO 0 (which pre-binds the guard FBO), ensuring the FBO being deleted is neither current nor previous on either the draw or read target.\n\n- Add GLFramebufferDeletionTest to validate binding invariants and probe driver behavior.\n\nBug: b/569165786\nChange-Id: Ic515d1a6cb5d3fe401bc746e80eac2c7beaa11e0\nReviewed-on: https://skia-review.googlesource.com/c/skia/+/1383616\nReviewed-by: Robert Phillips <robertphillips@google.com>\nCommit-Queue: Thomas Smith <thomsmit@google.com>",
       "date": "2026-10-12T11:23:25.000-04:00",
       "url": "https://github.com/google/skia/commit/02b14267cb023e7ec9fc52618bd12464ceb6afb7",
       "patch": "patches/CVE-2026-113341.patch"
@@ -16,6 +29,7 @@
       "repo": "chromium/chromium",
       "sha": "e193ceb7de134efa938172d45c38daec31658357",
       "subject": "Prevent attaching WebRtcAudioRenderer to terminated audio device",
+      "message": "Prevent attaching WebRtcAudioRenderer to terminated audio device\n\nWebRtcAudioDeviceImpl::SetAudioRenderer() previously checked only\nwhether `renderer_` was null before calling\nWebRtcAudioRenderer::Initialize() and registering the renderer. If the\naudio device had already been terminated via\nWebRtcAudioDeviceImpl::Terminate(), or if Terminate() ran on the\nsignaling thread while Initialize() was executing with `lock_` released,\nthe renderer retained a raw `source_` pointer to the terminated device\nthat would not be cleared on subsequent Terminate() calls.\n\nFix this by:\n- Guarding `initialized_` with `lock_` across threads and returning\n`renderer_` by value under `lock_` in\nWebRtcAudioDeviceImpl::renderer().\n- Checking `initialized_` before and after the unlocked\nWebRtcAudioRenderer::Initialize() call in SetAudioRenderer(), while\nretaining a reference to `this` across Initialize().\n- Calling DisconnectSource() and stopping the renderer if Terminate()\nintervened during Initialize().\n\nFixed: 574041825\nChange-Id: I36c202aae365df56f7f2a8180233179f6c9b88c7\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/8591863\nReviewed-by: Johannes Kron <kron@chromium.org>\nCommit-Queue: Guido Urdaneta <guidou@chromium.org>\nCr-Commit-Position: refs/heads/main@{#1720672}",
       "date": "2026-10-16T07:12:49.000-07:00",
       "url": "https://github.com/chromium/chromium/commit/e193ceb7de134efa938172d45c38daec31658357",
       "patch": "patches/CVE-2026-113303.patch"
@@ -27,6 +41,7 @@
       "repo": "chromium/chromium",
       "sha": "3ab9f85874d939e29f1179d7184e79f3cdc58a47",
       "subject": "Remove redundant IsHidden() check in FrameCaret::PaintCaret()",
+      "message": "Remove redundant IsHidden() check in FrameCaret::PaintCaret()\n\nFrameCaret::PaintCaret() called FrameSelection::IsHidden(), which calls\nFrameSelection::SelectionHasFocus() and synchronously invokes\nDocument::UpdateStyleAndLayout(). When FrameCaret::PaintCaret() is\nreached during PrePaintTreeWalk (for example, via an SVG <feImage>\nfilter painting a subtree with a caret), re-entering style and layout\ncan rebuild physical fragments while PrePaintTreeWalk is iterating over\nthem.\n\nChecking FrameSelection::IsHidden() in FrameCaret::PaintCaret() is\nunnecessary:\n- For a caret (non-range selection), FrameSelection::IsHidden() is\n  equivalent to !FrameSelection::SelectionHasFocus().\n- At the end of layout, FrameCaret::UpdateStyleAndLayoutIfNeeded() calls\n  FrameCaret::UpdateAppearance(), which checks\n  FrameCaret::ShouldShowCaret() (including\n  FrameSelection::SelectionHasFocus()).\n- If ShouldShowCaret() returns false, UpdateAppearance() returns a null\n  position and CaretDisplayItemClient::UpdateStyleAndLayoutIfNeeded()\n  clears `layout_block_`.\n- FrameCaret::PaintCaret() is only called when `layout_block_` is\n  non-null, so SelectionHasFocus() is already guaranteed to be true, and\n  CaretDisplayItemClient::PaintCaret() right above RecordSelection()\n  already paints the caret unconditionally.\n\nRemove the redundant IsHidden() check and call\nCaretDisplayItemClient::RecordSelection() unconditionally in\nFrameCaret::PaintCaret().\n\nBug: 570740320\nChange-Id: Id7e18c4fc26d8dcd35ba558046d164c0ad47b3b1\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/8523219\nReviewed-by: Philip Rogers <pdr@chromium.org>\nAuto-Submit: Kent Tamura <tkent@chromium.org>\nReviewed-by: Xianzhu Wang <wangxianzhu@chromium.org>\nCommit-Queue: Kent Tamura <tkent@chromium.org>\nCr-Commit-Position: refs/heads/main@{#1714054}",
       "date": "2026-10-07T18:00:46.000-07:00",
       "url": "https://github.com/chromium/chromium/commit/3ab9f85874d939e29f1179d7184e79f3cdc58a47",
       "patch": "patches/CVE-2026-113280.patch"
@@ -38,6 +53,7 @@
       "repo": "chromium/chromium",
       "sha": "83ce9f18d70490edb5d154ff04471f9c9fdde346",
       "subject": "[a11y] Mark image dirty directly when removing image map",
+      "message": "[a11y] Mark image dirty directly when removing image map\n\nWhen removing an HTMLMapElement during immediate tree updates, mark the\nassociated image AXObject's children dirty directly instead of calling\nNotifyParentChildrenChanged mid-traversal.\n\nChange-Id: Ia25df628d938a6bd48d17de46c9e716de847eefd\nBug: 570093145\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/8526087\nReviewed-by: Lucas Radaelli <lucasradaelli@google.com>\nAuto-Submit: Sky Debreuil <skydebreuil@google.com>\nReviewed-by: David Tseng <dtseng@chromium.org>\nCommit-Queue: Sky Debreuil <skydebreuil@google.com>\nCommit-Queue: David Tseng <dtseng@chromium.org>\nCr-Commit-Position: refs/heads/main@{#1715691}",
       "date": "2026-10-09T09:35:50.000-07:00",
       "url": "https://github.com/chromium/chromium/commit/83ce9f18d70490edb5d154ff04471f9c9fdde346",
       "patch": "patches/CVE-2026-113279.patch"
@@ -49,6 +65,7 @@
       "repo": "chromium/chromium",
       "sha": "15248c94bc3d90896e0a56d66ebc3a362318fe49",
       "subject": "[a11y] Copy title attribute value in AXNodeObject",
+      "message": "[a11y] Copy title attribute value in AXNodeObject\n\nStore the title attribute in a local AtomicString rather than a\nreference in AXNodeObject::Description(), and take it by value in\nAXNodeObject::TextAlternativeFromTitleAttribute(), matching how other\nattribute reads in Blink avoid holding references into element\nattribute storage across calls that may update it.\n\nChange-Id: Ie67fb6fd2bcddf55d5bfe506a4d33d8e5f1f5efd\nBug: 571618833\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/8551193\nReviewed-by: Lucas Radaelli <lucasradaelli@google.com>\nAuto-Submit: Sky Debreuil <skydebreuil@google.com>\nReviewed-by: David Tseng <dtseng@chromium.org>\nCommit-Queue: Sky Debreuil <skydebreuil@google.com>\nCr-Commit-Position: refs/heads/main@{#1718179}",
       "date": "2026-10-13T18:10:24.000-07:00",
       "url": "https://github.com/chromium/chromium/commit/15248c94bc3d90896e0a56d66ebc3a362318fe49",
       "patch": "patches/CVE-2026-113271.patch"
@@ -60,6 +77,7 @@
       "repo": "chromium/chromium",
       "sha": "73dd2febfaa5d8d2a398dbd906454a4e7e9d2b79",
       "subject": "Do not expose pseudo-elements through LargestContentfulPaint API",
+      "message": "Do not expose pseudo-elements through LargestContentfulPaint API\n\nIf a PseudoElement is stored as the element_ in the\nLargestContentfulPaint object, we would expose that to javascript\nthrough the element attribute.\n\nThis could cause all sorts of problems, letting javascript be able to\nmodify them as if they were true elements, moving them around the tree\nin unexpected places and setting attributes on them, for instance.\n\nSpecifically, the issue reported was modifying querySelector caches\nwhile being traversed due to slot re-assignment.\n\nBug: 570638836\nChange-Id: I44d87a537a7da52fa9dc2aa577a58a888c94f3de\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/8545831\nCommit-Queue: Scott Haseley <shaseley@chromium.org>\nCommit-Queue: Rune Lillesveen <futhark@chromium.org>\nAuto-Submit: Rune Lillesveen <futhark@chromium.org>\nReviewed-by: Scott Haseley <shaseley@chromium.org>\nCr-Commit-Position: refs/heads/main@{#1718007}",
       "date": "2026-10-13T15:29:08.000-07:00",
       "url": "https://github.com/chromium/chromium/commit/73dd2febfaa5d8d2a398dbd906454a4e7e9d2b79",
       "patch": "patches/CVE-2026-113072.patch"
@@ -71,9 +89,58 @@
       "repo": "chromium/chromium",
       "sha": "d50992ebe4421079a6f9782c7e8a4d0eb3f14c5f",
       "subject": "Guard BeginNavigation() against self-deletion during prerender checks",
+      "message": "Guard BeginNavigation() against self-deletion during prerender checks\n\nNavigationRequest::BeginNavigation() calls\nMaybeStartPrerenderingActivationChecks(), which queries\nPrerenderHostRegistry::FindPotentialHostToActivate(). When a candidate\nPrerenderHost matches the navigation URL (e.g. via a No-Vary-Search\nhint) but cannot be activated (such as during a BackForwardCache\nrestore navigation), FindPotentialHostToActivate() cancels that host.\n\nCancelling the running PrerenderHost can synchronously start a queued\npending prerender, whose navigation start can trigger side effects\n(such as evicting the BackForwardCached entry being restored via\nRestartBackForwardCachedNavigationAsync()) that synchronously reset\nand destroy the in-flight NavigationRequest on the primary FrameTree\nwhile BeginNavigation() is still on the stack.\n\nGuard the call to MaybeStartPrerenderingActivationChecks() in\nNavigationRequest::BeginNavigation() with a WeakPtr check and return\nearly if `this` was destroyed, matching the pattern used in\nNavigationRequest::BeginNavigationImpl().\n\nTAG=agy\nCONV=0a6e1b34-3eb6-4c7f-b0e4-e0f83dc8c7f9\n\nBug: 568719351\nChange-Id: If18df8e1d9e4ff8e5b34305dfeb3ab39f05222ff\nFixed: 568719351\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/8513959\nReviewed-by: Alex Moshchuk <alexmos@chromium.org>\nCommit-Queue: Rakina Zata Amni <rakina@chromium.org>\nCr-Commit-Position: refs/heads/main@{#1712087}",
       "date": "2026-10-06T01:27:18.000-07:00",
       "url": "https://github.com/chromium/chromium/commit/d50992ebe4421079a6f9782c7e8a4d0eb3f14c5f",
       "patch": "patches/CVE-2026-110922.patch"
+    }
+  },
+  "CVE-2026-85046": {
+    "bug_id": "542403045",
+    "fix": {
+      "repo": "v8/v8",
+      "sha": "e0562d87ad9c17042b581582c99237d798572e67",
+      "subject": "[compiler] Don't inline Array.prototype.sort on mixed elements kinds",
+      "message": "[compiler] Don't inline Array.prototype.sort on mixed elements kinds\n\nCanInlineArrayIteratingBuiltin unions the receiver elements kinds, so\npolymorphic feedback yields a kind that no single receiver need have:\n{PACKED_SMI,PACKED} unions to PACKED_ELEMENTS. That is fine for the\niterating builtins, which only read the receiver, but the inlined sort\nsnapshots the elements, runs comparefn, and copies the snapshot back\nspecialized on the union kind.\n\nA comparefn can narrow the live receiver to another kind in the map set\n(a.fill(0) turns PACKED_ELEMENTS into PACKED_SMI_ELEMENTS). The\npost-callback check accepts that map because it is in the original set,\nand the copy-back then stores the snapshotted HeapObjects into a\nSmi-elements array. Smi consumers of the resulting array read those\nHeapObjects as Smis and move them without write barriers.\n\nRequire all receiver maps to agree on their elements kind before\ninlining, in both Maglev and Turbofan. Monomorphic feedback is\nunaffected, as is polymorphism whose maps share an elements kind; sites\nwith mixed kinds fall back to the generic builtin.\n\nFixed: 542403045\nChange-Id: I38d9d3efc5942bd0122bbbe48bc26417a080821f\nReviewed-on: https://chromium-review.googlesource.com/c/v8/v8/+/8213162\nAuto-Submit: Jakob Linke <jgruber@chromium.org>\nCommit-Queue: Darius Mercadier <dmercadier@chromium.org>\nCommit-Queue: Jakob Linke <jgruber@chromium.org>\nReviewed-by: Darius Mercadier <dmercadier@chromium.org>\nCr-Commit-Position: refs/heads/main@{#109116}",
+      "date": "2026-08-07T08:52:18.000+02:00",
+      "url": "https://github.com/v8/v8/commit/e0562d87ad9c17042b581582c99237d798572e67",
+      "patch": "patches/CVE-2026-85046.patch"
+    }
+  },
+  "CVE-2026-5281": {
+    "bug_id": "491518608",
+    "fix": {
+      "repo": "google/dawn",
+      "sha": "3c890398bda440703c55f25cdaf1f800a700970d",
+      "subject": "[dawn][wire] Ensure that Devices on the Server always call Destroy.",
+      "message": "[dawn][wire] Ensure that Devices on the Server always call Destroy.\n\n- Because the wire server creates and manages callback information\n  for all Devices, we need to ensure that all Devices' callbacks\n  are fired before the server goes away. Otherwise, if the server\n  is deleted, and somehow there is an outstanding reference to the\n  backing native Device, the callbacks can happen and reference\n  freed memory.\n- Updates Wire testing infrastructure to:\n  1) Use a NiceMock for the ProcTable to avoid overly strict tests\n     that end up adding a lot implementation detail expectations.\n  2) Add expecatations that successfully created Devices on the\n     server should call Destroy to ensure that their callbacks are\n     all flushed.\n  3) Remove some tech-debt/unused members and functions after the\n     change.\n\nBug: 491518608\nChange-Id: I136f7c94ee7e2d79b5b04796bf850a990300aba4\nReviewed-on: https://dawn-review.googlesource.com/c/dawn/+/297136\nReviewed-by: Kai Ninomiya <kainino@chromium.org>\nCommit-Queue: Loko Kung <lokokung@google.com>\nReviewed-by: Corentin Wallez <cwallez@chromium.org>",
+      "date": "2026-03-16T12:47:12.000-07:00",
+      "url": "https://github.com/google/dawn/commit/3c890398bda440703c55f25cdaf1f800a700970d",
+      "patch": "patches/CVE-2026-5281.patch"
+    }
+  },
+  "CVE-2026-3909": {
+    "bug_id": "491421267",
+    "fix": {
+      "repo": "google/skia",
+      "sha": "0cab3e4ee34b3bca6ba7df676639d73ffe4b2135",
+      "subject": "Make sure we are getting the correct atlas for glyph mask format.",
+      "message": "Make sure we are getting the correct atlas for glyph mask format.\n\nBug: b/491421267\nChange-Id: I4eacd46599eca2df8c10a3fc894b9ce890fae1e2\nReviewed-on: https://skia-review.googlesource.com/c/skia/+/1184076\nCommit-Queue: Greg Daniel <egdaniel@google.com>\nReviewed-by: Michael Ludwig <michaelludwig@google.com>",
+      "date": "2026-03-10T16:22:54.000-04:00",
+      "url": "https://github.com/google/skia/commit/0cab3e4ee34b3bca6ba7df676639d73ffe4b2135",
+      "patch": "patches/CVE-2026-3909.patch"
+    }
+  },
+  "CVE-2026-2441": {
+    "bug_id": "483569511",
+    "fix": {
+      "repo": "chromium/chromium",
+      "sha": "e045399a1ecb7ee16e1a7bcbcd8ea59d283dfb07",
+      "subject": "Avoid stale iteration in CSSFontFeatureValuesMap",
+      "message": "Avoid stale iteration in CSSFontFeatureValuesMap\n\nTo avoid invalid iterator state, take a snapshot of the\nmap when creating the iteration source. This addresses\nthe immediate problem of iterating while modifying.\n\nRemaining work tracked in https://crbug.com/483936078\n\nFixed: 483569511\nChange-Id: Ie29cfdf7ed94bbe189b44c842a5efce571bb2cee\nReviewed-on: https://chromium-review.googlesource.com/c/chromium/src/+/7566570\nCommit-Queue: Dominik Röttsches <drott@chromium.org>\nReviewed-by: Anders Hartvoll Ruud <andruud@chromium.org>\nCr-Commit-Position: refs/heads/main@{#1583927}",
+      "date": "2026-02-12T06:35:36.000-08:00",
+      "url": "https://github.com/chromium/chromium/commit/e045399a1ecb7ee16e1a7bcbcd8ea59d283dfb07",
+      "patch": "patches/CVE-2026-2441.patch"
     }
   }
 }

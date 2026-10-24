@@ -182,7 +182,38 @@ it is not reachable with controllable timing from web content on this build.
 The regression test evicts synchronously from `DidStartNavigation`, which
 content cannot schedule.
 
-## 5. Limitations and next steps
+## 5. Patch recovery for the in-the-wild backlog
+
+Working newest-first through `data/rce_priority.json`, the fix commit was
+recovered for the 5 most recent in-the-wild CVEs after the October 2026 cases:
+
+| Advisory | CVE | Component | Root-cause commit | Repository |
+|----------|-----|-----------|-------------------|------------|
+| 2026-09-03 | CVE-2026-85046 | Type confusion in V8 | `e0562d87ad` | v8/v8 |
+| 2026-03-31 | CVE-2026-5281 | UAF in Dawn (wire) | `3c890398bd` | google/dawn |
+| 2026-03-13 | CVE-2026-3909 | OOB write in Skia | `0cab3e4ee3` | google/skia |
+| 2026-03-12 | CVE-2026-3910 | Inappropriate impl. in V8 | `7076ba135f` | v8/v8 |
+| 2026-02-13 | CVE-2026-2441 | UAF in CSS | `e045399a1e` | chromium |
+
+Two retrieval problems had to be fixed in `scripts/find_fixes.py`:
+
+1. **Autorolls.** For V8 and Dawn the chromium commit is only
+   `Roll V8 from A to B` / `Roll Dawn from A to B`, which carries no
+   root-cause diff. The script now parses the roll, walks the submodule range
+   on `*.googlesource.com`, and selects the commit that references the bug.
+   `CVE-2026-85046` is the clearest case: the chromium search returns a later
+   roll containing only a *test-flake* fix, while the actual fix
+   (`e0562d87ad`, "Don't inline Array.prototype.sort on mixed elements kinds")
+   landed three weeks earlier and was found through the submodule history.
+2. **Test-bundle commits.** V8 occasionally moves old regression tests into
+   the public repo in one commit listing dozens of bugs. It matches the search
+   but is not the fix, so candidates are now scored by `Fixed:`/`Bug:` lines
+   and penalised when they mention many bugs or move tests.
+
+The submodule searches also work without a roll hit: `CVE-2026-3910` was found
+directly in `v8/v8` (`7076ba135f`, "[maglev] disable Phi untagging").
+
+## 6. Limitations and next steps
 
 1. **ASAN build.** It is the next step with the best cost/benefit ratio.
    `docs/ASAN.md` describes how to build with `is_asan=true`. With ASAN, cases

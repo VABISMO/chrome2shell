@@ -87,6 +87,26 @@ exploit exists in the wild. They are the natural first backlog for the lab.
 | 2023-12-20 | CVE-2023-7024 | Heap buffer overflow in WebRTC | 120.0.6099.129 |
 | 2023-11-28 | CVE-2023-6345 | Integer overflow in Skia | 119.0.6045.199 |
 
+### Backlog triage: newest in-the-wild CVEs (patches recovered)
+
+Working newest-first, the fix commit has been recovered for the 5 most recent
+in-the-wild entries. For vendored components the matching chromium commit is
+only an **autoroll**, so `scripts/find_fixes.py` now follows the roll into the
+submodule (`V8`, `Dawn`) and picks the individual commit that references the
+bug. The roll is kept as `patches/<CVE>.roll.patch` for provenance.
+
+| Advisory | CVE | Component | Root-cause commit | Repo |
+|----------|-----|-----------|-------------------|------|
+| 2026-09-03 | CVE-2026-85046 | Type confusion in V8 (sort inlining) | `e0562d87ad` | v8/v8 |
+| 2026-03-31 | CVE-2026-5281 | Use after free in Dawn (wire) | `3c890398bd` | google/dawn |
+| 2026-03-13 | CVE-2026-3909 | Out of bounds write in Skia (atlas) | `0cab3e4ee3` | google/skia |
+| 2026-03-12 | CVE-2026-3910 | Inappropriate implementation in V8 (Maglev Phi) | `7076ba135f` | v8/v8 |
+| 2026-02-13 | CVE-2026-2441 | Use after free in CSS (font feature values) | `e045399a1e` | chromium |
+
+All 12 recovered patches (7 Oct-2026 cases + these 5) contain enough context to
+derive a crash-only reproducer; 10 of them add or change a regression test.
+That test is the specification used for the next round of cases.
+
 **Reality check on reproduction:** 6 of the 7 cases are memory corruptions that
 do not reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
 (1) confirm the vulnerable path, (2) compare vulnerable vs. patched builds and
