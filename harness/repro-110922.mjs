@@ -7,8 +7,10 @@
  * synchronously start a queued prerender, whose navigation start evicts the
  * BFCached page and destroys the in-flight NavigationRequest.
  *
- * This script only tries to reproduce the crash and classify the outcome. It
- * contains no exploitation logic. It mirrors the patch's regression test
+ * This script is the stage-1 driver for the case: it tries to reproduce the
+ * crash and classify the outcome. It contains no exploitation logic by design
+ * — the leak and RCE PoCs live per case as `poc-leak.html` / `poc-rce.html`
+ * (docs/EXPLOITATION.md). It mirrors the patch's regression test
  * (PrerenderBackForwardCacheBrowserTest.EvictBackForwardCacheDuringPrerenderActivationCheck)
  * but drives it from web content instead of C++ browser-test hooks.
  *

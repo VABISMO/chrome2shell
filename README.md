@@ -1,20 +1,29 @@
-# chrome2shell — Chrome CVE research lab
+# chrome2shell — Chrome CVE exploitation lab
 
-> **This repository does NOT contain exploits or an RCE chain.** Despite the
-> name, it is a crash-only reproduction lab and exploitability assessment:
-> CVE inventory, patches, root cause and vulnerable-vs-patched differential.
-> It contains no exploit code, no read/write primitives and no sandbox escapes.
+> **Scope: crash → leak → RCE.** This is a full exploitation-development lab:
+> each case is driven through three stages — a crash PoC, a leak PoC and an
+> RCE PoC — and every stage is verified differentially against the first
+> patched build.
+>
+> **No sanitizers.** Everything runs on the shipped `release` binaries using
+> normal binary-debugging tools: `gdb`, kernel core dumps, `objdump`/`readelf`,
+> `strace`, `perf`. Evidence is observable state, controlled register crashes
+> and payload markers — never an ASAN report.
 >
 > Intended use: defensive research and patch verification in owned, authorized
-> environments.
+> environments. Targets are the pinned local builds in `builds/` served from
+> `127.0.0.1`, and every CVE here is already patched upstream.
 
-A reproducible lab to study and **verify** critical Google Chrome CVEs using
+A reproducible lab to study and **exploit** critical Google Chrome CVEs using
 only public information: official advisories, crbug.com bug IDs and the fix
-commits.
+commits — then to prove the exploit path is cut by the patch.
 
-> **Scope:** defensive, crash-only lab. It contains no exploits, no RCE and no
-> sandbox evasion. The goal is to answer one question: *can the flaw be
-> reproduced on the affected build and confirmed fixed on the patched one?*
+> **Scope of "exploit":** the ladder is crash → leak → primitives →
+> control-flow hijack → lab-marker payload, inside the renderer process (the
+> advisory's own scope). Host-level sandbox escape is a separate scope, only
+> relevant for CVEs whose advisory is a sandbox bug; none of the current cases
+> is one. See [`docs/EXPLOITATION.md`](docs/EXPLOITATION.md) for the full
+> methodology and evidence rules.
 
 ---
 
@@ -43,26 +52,44 @@ for non-memory-safety classes and plain out-of-bounds *reads*.
 The two most recent releases (October 15 and 20, 2026) contain **7 CVEs rated
 `Critical`**, which became the first lab cases:
 
-| CVE | Component | Type | Bug ID | Fix commit | Reproducible |
+| CVE | Component | Type | Bug ID | Fix commit | Stage status |
 |-----|-----------|------|--------|-----------|--------------|
-| CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⚠️ blocked (see below) |
-| CVE-2026-113341 | Skia / Ganesh | UAF (driver) | 569165786 | `02b14267` (skia) | ❌ Imagination hardware |
-| CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 a11y stress |
-| CVE-2026-113072 | CSS / LCP | Mem. corruption | 570638836 | `73dd2febfa` | ✅ behavioral |
-| CVE-2026-113280 | Paint / caret | Mem. corruption | 570740320 | `3ab9f85874` | 🧪 paint stress |
-| CVE-2026-113271 | Accessibility | UAF (StringImpl) | 571618833 | `15248c94bc` | 🧪 a11y stress |
-| CVE-2026-113303 | WebRTC / audio | Mem. corruption | 574041825 | `e193ceb7de` | 🧪 audio stress |
+| CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⛔ stage 1 blocked (see below) |
+| CVE-2026-113341 | Skia / Ganesh | UAF (driver) | 569165786 | `02b14267` (skia) | ⛔ no Imagination hardware |
+| CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 stage 1 (a11y stress) |
+| CVE-2026-113072 | CSS / LCP | Mem. corruption | 570638836 | `73dd2febfa` | 🟡 stage 1–2 (exposure) |
+| CVE-2026-113280 | Paint / caret | Mem. corruption | 570740320 | `3ab9f85874` | 🧪 stage 1 (paint stress) |
+| CVE-2026-113271 | Accessibility | UAF (StringImpl) | 571618833 | `15248c94bc` | 🧪 stage 1 (a11y stress) |
+| CVE-2026-113303 | WebRTC / audio | Mem. corruption | 574041825 | `e193ceb7de` | 🧪 stage 1 (audio stress) |
+
+The full per-CVE, per-stage tracker (crash / leak / RCE columns and next
+actions) is [`findings/STAGES.md`](findings/STAGES.md).
 
 **Methodological finding:** although the crbug.com bugs remain restricted and
 there are no public PoCs, the advisory publishes the **bug ID**, and the fix
 lands in a public repo with `Fixed: <bug_id>` in the commit message. That makes
 it possible to recover the exact patch and derive the root cause.
-`scripts/find_fixes.py` automates it: 7/7 found.
+`scripts/find_fixes.py` automates it: 7/7 found. The patch is also the
+specification for every later stage: it lists what the fix stops exposing,
+stops re-entering and stops letting an attacker shape.
+
+### The three stages
+
+| Stage | Question | Evidence | Harness |
+|-------|----------|----------|---------|
+| **1. crash** | is the vulnerable path reachable? | differential crash + core/`gdb` anatomy (or a live `gdb` observation of corrupted state) | `run-case.mjs --stage crash` |
+| **2. leak** | can the page observe what it must not? | values published in `__LAB_RESULT`, corroborated in `gdb`, absent on the patched build | `run-case.mjs --stage leak` |
+| **3. RCE** | can we choose what executes? | ladder rungs: shaping → primitives → arbitrary R/W → chosen `rip` → lab-marker payload | `run-case.mjs --stage rce` |
+
+Every stage obeys the same rule: **the PoC must fail on the first patched
+build.** Methodology, tool matrix and per-CVE plans:
+[`docs/EXPLOITATION.md`](docs/EXPLOITATION.md).
 
 ### Exploited in the wild since 2023-10
 
 These 20 are the highest-priority targets: Google's own advisory says an
-exploit exists in the wild. They are the natural first backlog for the lab.
+exploit exists in the wild. They are the natural backlog for the RCE ladder
+(the V8 type confusions in it are the most ladder-friendly class).
 
 | Date | CVE | Component | Fixed in |
 |------|-----|-----------|----------|
@@ -95,17 +122,17 @@ only an **autoroll**, so `scripts/find_fixes.py` now follows the roll into the
 submodule (`V8`, `Dawn`) and picks the individual commit that references the
 bug. The roll is kept as `patches/<CVE>.roll.patch` for provenance.
 
-| Advisory | CVE | Component | Root-cause commit | Repo |
-|----------|-----|-----------|-------------------|------|
-| 2026-09-03 | CVE-2026-85046 | Type confusion in V8 (sort inlining) | `e0562d87ad` | v8/v8 |
-| 2026-03-31 | CVE-2026-5281 | Use after free in Dawn (wire) | `3c890398bd` | google/dawn |
-| 2026-03-13 | CVE-2026-3909 | Out of bounds write in Skia (atlas) | `0cab3e4ee3` | google/skia |
-| 2026-03-12 | CVE-2026-3910 | Inappropriate implementation in V8 (Maglev Phi) | `7076ba135f` | v8/v8 |
-| 2026-02-13 | CVE-2026-2441 | Use after free in CSS (font feature values) | `e045399a1e` | chromium |
+| Advisory | CVE | Component | Root-cause commit | Repo | Ladder notes |
+|----------|-----|-----------|-------------------|------|--------------|
+| 2026-09-03 | CVE-2026-85046 | Type confusion in V8 (sort inlining) | `e0562d87ad` | v8/v8 | first RCE-ladder target — **stages 1–2 done** (crash-differential + addrof leak) |
+| 2026-03-31 | CVE-2026-5281 | Use after free in Dawn (wire) | `3c890398bd` | google/dawn | stage 1 first |
+| 2026-03-13 | CVE-2026-3909 | Out of bounds write in Skia (atlas) | `0cab3e4ee3` | google/skia | write primitive |
+| 2026-03-12 | CVE-2026-3910 | Inappropriate implementation in V8 (Maglev Phi) | `7076ba135f` | v8/v8 | type confusion ladder |
+| 2026-02-13 | CVE-2026-2441 | Use after free in CSS (font feature values) | `e045399a1e` | chromium | stage 1 first |
 
 All 12 recovered patches (7 Oct-2026 cases + these 5) contain enough context to
-derive a crash-only reproducer; 10 of them add or change a regression test.
-That test is the specification used for the next round of cases.
+derive a reproducer; 10 of them add or change a regression test. That test is
+the specification used for the next round of cases.
 
 **CVE-2026-110922 is not missing from this backlog:** it is the prerender UAF in
 the October table above. Its patch (`d50992ebe4`) is recovered, and its
@@ -114,20 +141,24 @@ synchronous eviction: the stalled prerender host is alive at `history.back()`
 (`open=1`), the BFCache restore is evicted ~57 ms later by Service Worker
 activation, and a 600–1200 ms delay sweep produced 0 crashes in 9 runs. The
 deterministic reproduction is the patch's C++ test, which needs a debug build
-and gdb breakpoints, not ASAN.
+and `gdb` breakpoints (no sanitizer involved).
 
-### Debugging without ASAN
+### Debugging with normal tools
 
-Release binaries can still be used with normal tooling: the harness enables
-kernel core dumps, disables Crashpad, and analyses the core with `gdb` in batch
-mode (`bt`, registers, faulting instruction, module map). Full instructions are
-in [`docs/GDB.md`](docs/GDB.md); cores land in `findings/raw/` and are deleted
-after analysis unless `--keep-core` is passed.
+Release binaries work with ordinary tooling: the harness enables kernel core
+dumps, disables Crashpad, and analyses the core with `gdb` in batch mode
+(`bt`, registers, faulting instruction, module map). Full instructions are in
+[`docs/GDB.md`](docs/GDB.md) (including live breakpoints and watchpoints for
+the leak and RCE stages); cores land in `findings/raw/` and are deleted after
+analysis unless `--keep-core` is passed.
 
-**Reality check on reproduction:** 6 of the 7 cases are memory corruptions that
-do not reliably abort in `release` builds (no ASAN or DCHECKs). The lab is meant to
-(1) confirm the vulnerable path, (2) compare vulnerable vs. patched builds and
-(3) serve as a base for an ASAN build. Per-CVE details are in
+**Reality check on stage 1:** 6 of the 7 cases are memory corruptions that do
+not reliably fault in `release` builds (no ASAN and no DCHECKs). The lab's
+answer is not a rebuilt binary: it is heap shaping to force reuse, `gdb`
+breakpoints placed on the exact lines the patch changes, and watchpoints over
+the dangling slot (`docs/EXPLOITATION.md` §1). The lab is meant to (1) confirm
+the vulnerable path, (2) compare vulnerable vs. patched builds, and (3) carry
+each case up the ladder. Per-CVE details are in
 [`findings/RESULTS.md`](findings/RESULTS.md) and
 [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md).
 
@@ -149,7 +180,8 @@ Two findings are worth recording because they cost several wrong attempts:
 
 The canonical reproduction is the patch's own
 `PrerenderBackForwardCacheBrowserTest.EvictBackForwardCacheDuringPrerenderActivationCheck`
-on an ASAN build. No exploit code is involved or needed.
+under `gdb` breakpoints in `NavigationRequest::BeginNavigation`. No ASAN, no
+sanitizer build.
 
 ---
 
@@ -167,35 +199,51 @@ chrome-cve-lab/
 │   ├── sync_cves.py       # Chrome Releases RSS -> data/cves.json
 │   ├── find_fixes.py      # bug ID -> fix commit -> patches/<CVE>.patch
 │   ├── fetch_chrome.py    # download an exact Chrome for Testing version
-│   └── setup_asan.sh      # Chromium ASAN build (multi-hour, optional)
+│   └── setup_asan.sh      # optional sanitizer build (NOT part of the workflow)
 ├── harness/
-│   ├── oracle.mjs         # load a URL and detect crashes (renderer/browser)
-│   ├── run-case.mjs       # run a case on vulnerable vs. patched builds
+│   ├── oracle.mjs         # stage oracle: load a URL, collect evidence, detect crashes
+│   ├── run-case.mjs       # --stage crash|leak|rce on vulnerable vs. patched builds
 │   ├── repro-110922.mjs   # CVE-2026-110922, Playwright driver (control only)
 │   ├── selfdrive-110922.mjs  # CVE-2026-110922, CDP-free driver
 │   ├── lib/scenario-server.mjs  # shared server + in-page orchestration
 │   └── lib/crash-report.mjs     # core dump -> gdb batch report
-├── cases/<CVE>/           # case.json + testcase.html + root-cause README
-├── patches/               # fix patches (evidence)
-├── docs/                  # ADDING_CVES.md, ASAN.md
-└── findings/              # RESULTS.md, EXPLOITABILITY.md and JSON
+├── cases/<CVE>/
+│   ├── case.json          # builds, flags, and stages.<stage> = {entry, status}
+│   ├── testcase.html      # stage 1: crash/behavior trigger
+│   ├── poc-leak.html      # stage 2: leak/exposure PoC (when started)
+│   ├── poc-rce.html       # stage 3: RCE PoC (when started)
+│   └── README.md          # root cause, relevant diff, stage status
+├── patches/               # fix patches (evidence + PoC specification)
+├── docs/
+│   ├── EXPLOITATION.md    # THE scope document: crash → leak → RCE methodology
+│   ├── ADDING_CVES.md     # how to add a case (with stage files)
+│   ├── GDB.md             # core dumps, batch and live debugging, watchpoints
+│   └── ASAN.md            # optional reference only (not used by this lab)
+└── findings/
+    ├── STAGES.md          # per-CVE stage tracker (crash/leak/RCE columns)
+    ├── RESULTS.md         # what was reproduced and what was not
+    ├── EXPLOITABILITY.md  # per-CVE exploitability assessment
+    └── raw/               # oracle JSON, gdb reports, cores (--keep-core)
 ```
 
 Key documents:
 
+- [`docs/EXPLOITATION.md`](docs/EXPLOITATION.md) — the methodology for the
+  three stages, evidence rules, toolchain, per-CVE plans.
+- [`findings/STAGES.md`](findings/STAGES.md) — where every CVE stands on the
+  crash / leak / RCE ladder and the next action.
 - [`findings/RESULTS.md`](findings/RESULTS.md) — what was reproduced and what
   was not.
 - [`findings/EXPLOITABILITY.md`](findings/EXPLOITABILITY.md) — per-CVE
   exploitability assessment (reachability, lifetime, mitigations, level).
-- [`docs/GDB.md`](docs/GDB.md) — release-build crashing with core dumps and
-  gdb, no ASAN build required.
-- [`docs/ASAN.md`](docs/ASAN.md) — sanitizer build to characterize the UAFs
-  (the strongest detector when a build is affordable).
+- [`docs/GDB.md`](docs/GDB.md) — release-build crashing, core dumps, live
+  breakpoints and watchpoints, no sanitizer build required.
 
 ## Requirements
 
 - Node.js ≥ 20 and `npm install` (only `playwright-core`, no bundled browsers).
 - Python 3.10+.
+- `gdb` (the wrapper setup without root is documented in `docs/GDB.md`).
 - ~400 MB of disk per Chrome for Testing build.
 - Docker is not required. The Chrome binary runs directly.
 
@@ -213,11 +261,21 @@ python3 scripts/sync_cves.py --since 2023-10-01 --min-severity High --priority -
 python3 scripts/find_fixes.py
 
 # 3. download the vulnerable build and the first patched one
+#    (--connections N parallelizes the fetch on slow links)
 python3 scripts/fetch_chrome.py 155.0.8059.84 156.0.8078.47
+python3 scripts/fetch_chrome.py 152.0.7977.75 152.0.7977.82 --connections 16  # CVE-2026-85046 pair
 
-# 4. run one case (or all of them)
+# 4. stage 1: crash / behavior, differentially
 node harness/run-case.mjs CVE-2026-113072
 node harness/run-case.mjs --all
+
+# stage 2 and 3 use the same runner with the case's poc-leak/poc-rce entries
+node harness/run-case.mjs CVE-2026-113072 --stage leak
+node harness/run-case.mjs CVE-2026-113072 --stage rce
+
+# keep the core dump of a crashing stage for manual gdb work
+node harness/run-case.mjs CVE-2026-113280 --stage crash --cores --keep-core
+findings/raw/CVE-2026-113280.crash.vulnerable.core.txt   # gdb batch report
 
 # 5. CVE-2026-110922 without DevTools (prerendering is disabled under CDP)
 node harness/selfdrive-110922.mjs --browser /usr/lib/chromium/chromium
@@ -243,34 +301,49 @@ written to `findings/<CVE>.json` and `findings/raw/`.
    `google/skia`, `google/dawn`, `google/angle` as fallbacks) through the
    GitHub commit search API. The commit is saved as a `.patch`.
 3. **Root cause** — read the diff (and its regression test, which usually
-   describes the exact sequence).
-4. **Testcase** — translate that sequence into HTML/JS that runs in the
-   harness.
-5. **Differential check** — same testcase on the vulnerable build and on the
-   first patched one. Compare crashes and observable behavior.
+   describes the exact sequence). The diff is also the specification for every
+   later stage: what the fix stops exposing = the leak; what it stops
+   re-entering/holding = the corruption to shape.
+4. **Stage 1 (crash)** — turn the sequence into `testcase.html`; make the bug
+   observable in release with heap shaping and `gdb` breakpoints/watchpoints
+   on the patched lines; compare crashes on both builds.
+5. **Stage 2 (leak)** — publish what the API must not return, corroborate the
+   value in `gdb`, show the patched build returns nothing.
+6. **Stage 3 (RCE)** — walk the ladder (shape → primitives → arbitrary R/W →
+   chosen `rip` → lab-marker payload), one evidence file per rung.
+7. **Differential check** — every stage runs on the vulnerable build and on the
+   first patched one; a stage that behaves the same on both is not evidence.
 
 ## Limitations (important)
 
-- **No ASAN.** Chrome for Testing ships `release` builds. A UAF may never
-  abort. Reliable detection requires building Chromium with
-  `is_asan=true is_debug=false` (or `is_msan`), which needs ~100 GB and hours.
-  The harness already supports pointing a case at any binary via
-  `case.json -> browser`.
+- **No sanitizers, by design.** Chrome for Testing ships `release` builds and
+  this lab does not rebuild Chromium. A UAF may never abort by itself; the
+  technique is shaping + live `gdb` (see *Debugging with normal tools* and
+  `docs/EXPLOITATION.md` §1). `docs/ASAN.md` is kept as optional reference
+  only and is not part of the workflow.
+- **Stripped binaries.** Chromium frames in a core are addresses. Symbols come
+  from the modules that carry them (`objdump -d`, `readelf -Ws`) and from
+  offsets relative to the fix diff; `symbol_level=1`/Breakpad symbols are an
+  optional local aid, not a requirement.
 - **Driver/hardware bugs.** CVE-2026-113341 lives in the Imagination driver;
   without that hardware it cannot be reproduced.
 - **Browser-process bugs.** A UAF in the browser process shows up as a CDP
   disconnect, not as `page.on('crash')`; the oracle classifies it as
-  `browser-launch-or-connection`.
+  `browser-launch-or-connection` (the core dump disambiguates).
 - **Timing.** Several cases are races; they run with `iterations` and stress,
-  but a "no crash" result **does not prove** the bug is absent.
+  but a "no crash" result **does not prove** the bug is absent — take it to
+  `gdb` and break the window open instead of only retrying.
+- **Renderer scope.** "RCE" here means controlled execution in the renderer,
+  matching the advisories. Defeating Site Isolation/the renderer sandbox is a
+  separate scope and is only in scope for CVEs that *are* sandbox bugs.
 
 ## Adding a new CVE
 
 ```bash
 python3 scripts/sync_cves.py --min-severity High --days 30
 python3 scripts/find_fixes.py --cve CVE-2026-XXXXX
-mkdir cases/CVE-2026-XXXXX   # copy a case.json and its testcase.html
-node harness/run-case.mjs CVE-2026-XXXXX
+mkdir cases/CVE-2026-XXXXX   # case.json (with stages) + testcase.html + PoCs
+node harness/run-case.mjs CVE-2026-XXXXX --stage crash
 ```
 
 See [`docs/ADDING_CVES.md`](docs/ADDING_CVES.md).
@@ -284,11 +357,13 @@ See [`docs/ADDING_CVES.md`](docs/ADDING_CVES.md).
 
 ## Disclaimer
 
-Use only in your own, isolated environment. Do not point the harness at
-third-party sites or distribute the testcases as exploits.
+Use only in your own, isolated, authorized environment. Do not point the
+harness or any PoC at third-party sites, and do not run these PoCs against
+browser builds you do not own.
 
-This repository is **not an exploit kit**: it contains no remote-code-execution
-code, no read/write primitives and no sandbox escapes. The testcases only
-exercise code paths to detect crashes and compare behavior between versions.
-Any use to attack systems without authorization is outside the intended scope
-and is the responsibility of whoever performs it.
+This is an exploitation-research lab: it contains crash, leak and RCE PoCs for
+**already-patched** CVEs, built to verify fixes and to document exploitability.
+It is not a product or a weaponized kit: payloads are lab markers, targets are
+the pinned local builds, and no part of it is meant to be deployed against
+systems without authorization. Any use to attack systems without authorization
+is outside the intended scope and is the responsibility of whoever performs it.

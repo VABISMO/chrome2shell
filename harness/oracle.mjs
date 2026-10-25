@@ -1,17 +1,24 @@
 #!/usr/bin/env node
 /**
- * Crash oracle: loads a URL in a specific Chrome build and reports whether the
- * renderer or the browser process died, plus the result the testcase itself
- * publishes in `window.__LAB_RESULT`.
+ * Stage oracle: loads a URL in a specific Chrome build, collects the evidence
+ * the testcase publishes in `window.__LAB_RESULT`, and reports whether the
+ * renderer or the browser process died.
  *
- * It only detects crashes. It contains no exploitation logic.
+ * All three stages (crash, leak, rce) run through this oracle; what each stage
+ * proves is defined by the case entry file, not here (`docs/EXPLOITATION.md`).
+ * With `--cores-dir` the process runs with `--disable-breakpad` in a dedicated
+ * working directory so the kernel writes a core, which is then analysed with
+ * gdb in batch mode (normal binary tooling only, `docs/GDB.md`).
  *
  * Usage:
  *   node harness/oracle.mjs --browser builds/155.0.8059.84/chrome-linux64/chrome \
  *        --url http://127.0.0.1:8000/cases/X/testcase.html --timeout 20000
+ *   ... --cores-dir /path/to/cores --core-out report.core.txt --keep-core true
  */
 import { chromium } from "playwright-core";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { findGdb, findCore, analyzeCore, digest, dropCore } from "./lib/crash-report.mjs";
 
 function parseArgs(argv) {
   const out = {};
@@ -34,9 +41,26 @@ const extraFlags = (args.flags ?? "")
   .filter(Boolean);
 
 if (!browserPath || !url) {
-  console.error("usage: oracle.mjs --browser <path> --url <url> [--timeout ms] [--iterations n] [--flags a,b]");
+  console.error(
+    "usage: oracle.mjs --browser <path> --url <url> [--timeout ms] [--iterations n] [--flags a,b] [--cores-dir <dir>] [--core-out <file>] [--keep-core true]",
+  );
   process.exit(2);
 }
+
+// Optional kernel core dumps: run in a dedicated directory (the core lands in
+// the crashing process's cwd), disable Crashpad, analyse with gdb afterwards.
+let coresDir = null;
+if (args["cores-dir"]) {
+  try {
+    coresDir = resolve(args["cores-dir"]);
+    mkdirSync(coresDir, { recursive: true });
+    process.chdir(coresDir);
+  } catch {
+    coresDir = null; // best effort: the run continues without cores
+  }
+}
+const keepCore = args["keep-core"] === "true";
+const coreOut = args["core-out"] ?? null;
 
 const DEFAULT_FLAGS = [
   "--no-first-run",
@@ -58,6 +82,7 @@ const report = {
   results: [],
   console: [],
   pageErrors: [],
+  core: null,
   durationMs: 0,
 };
 
@@ -68,7 +93,7 @@ try {
   browser = await chromium.launch({
     executablePath: browserPath,
     headless: !headed,
-    args: [...DEFAULT_FLAGS, ...extraFlags],
+    args: [...DEFAULT_FLAGS, ...(coresDir ? ["--disable-breakpad"] : []), ...extraFlags],
   });
 
   let disconnected = false;
@@ -128,6 +153,27 @@ try {
 }
 
 report.durationMs = Date.now() - started;
+
+// Core analysis (normal tooling only): gdb batch over the newest core this
+// run produced — cores from earlier runs (kept with --keep-core) are ignored.
+if (coresDir) {
+  const core = findCore(coresDir, started);
+  if (core) {
+    report.crashed = true;
+    report.crashType = report.crashType ?? "core-dump";
+    const res = analyzeCore({ gdb: findGdb(args.gdb), binary: browserPath, core });
+    report.core = {
+      file: core,
+      gdbAvailable: res.available,
+      signal: res.signal ?? null,
+      digest: res.available ? digest(res.text) : res.text,
+    };
+    if (coreOut) writeFileSync(coreOut, res.text + "\n");
+    if (!keepCore) dropCore(core);
+  } else {
+    report.core = { file: null, note: `no core file in ${coresDir}` };
+  }
+}
 
 if (args.out) writeFileSync(args.out, JSON.stringify(report, null, 2) + "\n");
 console.log(JSON.stringify(report, null, 2));

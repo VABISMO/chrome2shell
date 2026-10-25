@@ -56,9 +56,11 @@ specification you will get.
 
 ```
 cases/CVE-2026-XXXXX/
-├── case.json       # builds, flags, timeout, status
-├── testcase.html   # HTML/JS that exercises the vulnerable path
-└── README.md       # root cause, relevant diff, result
+├── case.json       # builds, flags, timeout, and stages.<stage> = {entry, status}
+├── testcase.html   # stage 1: HTML/JS that exercises the vulnerable path
+├── poc-leak.html   # stage 2: leak/exposure PoC (created when the stage starts)
+├── poc-rce.html    # stage 3: RCE PoC (created when the stage starts)
+└── README.md       # root cause, relevant diff, stage status
 ```
 
 `case.json`:
@@ -74,7 +76,12 @@ cases/CVE-2026-XXXXX/
   "iterations": 2,
   "flags": ["--force-renderer-accessibility"],
   "status": "stress",
-  "expectation": "what should be observed"
+  "expectation": "what should be observed",
+  "stages": {
+    "crash": { "entry": "testcase.html", "status": "pending" },
+    "leak":  { "entry": "poc-leak.html", "status": "pending" },
+    "rce":   { "entry": "poc-rce.html",  "status": "pending" }
+  }
 }
 ```
 
@@ -87,23 +94,37 @@ Statuses:
 | `blocked` | missing an ingredient (network, SW, timing) |
 | `not-reproducible` | depends on hardware/driver |
 
+Stage statuses (inside `stages`, and mirrored in `findings/STAGES.md`):
+`pending` (not started), `in-progress` (path exercised, no evidence yet),
+`partial` (evidence exists, short of the exit criteria), `done` (exit criteria
+met **and** the patched build fails the same PoC), `blocked`.
+
 ## 5. Testcase rules
 
-- Publish the verdict in `window.__LAB_RESULT` (JSON-serializable).
+- Publish the verdict in `window.__LAB_RESULT` (JSON-serializable,
+  deterministic: no timestamps or run-dependent values — the harness compares
+  it across builds).
 - Do not block the main thread indefinitely; use a `setTimeout` fallback.
 - No external network: everything must be served from `cases/<CVE>/` (the
   harness starts a static server on `127.0.0.1`).
 - If you need a secure context, `127.0.0.1` already is one.
+- Each stage has its own entry file and its own evidence: the PoC of a stage
+  must produce its effect on the vulnerable build and **fail on the patched
+  one**. If it behaves the same on both, it is not stage evidence.
 
 ## 6. Run
 
 ```bash
-node harness/run-case.mjs CVE-2026-XXXXX
-node harness/run-case.mjs CVE-2026-XXXXX --headed   # real caret/paint
+node harness/run-case.mjs CVE-2026-XXXXX                    # stage 1 (crash)
+node harness/run-case.mjs CVE-2026-XXXXX --stage leak       # stage 2
+node harness/run-case.mjs CVE-2026-XXXXX --stage rce        # stage 3
+node harness/run-case.mjs CVE-2026-XXXXX --headed           # real caret/paint
+node harness/run-case.mjs CVE-2026-XXXXX --cores --keep-core  # keep the core
 ```
 
 Results: `findings/CVE-2026-XXXXX.json` (comparison) and
-`findings/raw/<CVE>.<vulnerable|fixed>.json` (raw oracle output).
+`findings/raw/<CVE>.<stage>.<vulnerable|fixed>.json` (raw oracle output, plus
+`*.core.txt` when `--cores` is used).
 
 If the bug needs prerendering, service workers, or a stalled response, the
 static file server is not enough. See `harness/repro-110922.mjs` (dynamic
@@ -112,28 +133,20 @@ DevTools/CDP session without tab-target support disables prerendering
 (`kPrerenderingDisabledByDevTools`), so prerender bugs must be driven without
 Playwright.
 
-## 7. Crash analysis (optional, for real UAFs)
+## 7. Stage 1 without a crash (normal debug tools)
 
-Two paths, in increasing cost:
+A release build often will not fault for a real UAF — that is not a failed
+case, it is a case that needs `gdb`. In increasing depth, all without
+sanitizers (full techniques: [`EXPLOITATION.md`](EXPLOITATION.md) §1):
 
-1. **Release binary + core + gdb.** No build required; the harness enables
-   kernel core dumps and runs gdb in batch mode. See [`GDB.md`](GDB.md).
-   Fast to set up, but a UAF only crashes if the freed slot is unmapped or
-   reused as an incompatible object.
-2. **ASAN build.** Chrome for Testing does not ship sanitizer builds. For
-   reliable detection:
+1. **Core + gdb batch.** The harness enables kernel core dumps and runs gdb in
+   batch mode over the crash. See [`GDB.md`](GDB.md).
+2. **Heap shaping.** Reclaim the freed slot with a controlled object of the
+   same size and show the observable corruption from JS (length/elements
+   changed) — stage-1 evidence without a fault.
+3. **Live breakpoints and watchpoints.** Break on the exact lines the patch
+   changes (addresses via `objdump -d`/`info proc mappings`), or `watch` the
+   dangling slot; drive the regression test's sequence under gdb.
 
-```bash
-# requirements: depot_tools, ~100 GB free
-fetch chromium
-cd src && gn gen out/asan --args='is_debug=false is_asan=true is_component_build=false'
-autoninja -C out/asan chrome
-```
-
-Then point the case at that binary:
-
-```json
-{ "browser": "/path/to/src/out/asan/chrome" }
-```
-
-See [`ASAN.md`](ASAN.md) for the full procedure.
+`docs/ASAN.md` exists as optional reference only; sanitizer builds are **not**
+part of this lab's workflow.

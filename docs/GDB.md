@@ -1,9 +1,11 @@
-# Debugging release builds without ASAN
+# Debugging release builds (gdb, cores, normal binary tooling)
 
-ASAN is the best detector for memory-safety bugs, but it needs a multi-hour
-Chromium build. Most of the work in this lab can be done with the shipped
-release binary plus normal binary tooling: the kernel core dumper, `gdb`, and
-the ELF symbol tables. This page documents that path.
+This is the lab's primary debugger workflow for **all three stages**: crash
+evidence (stage 1), corroborating a leaked value (stage 2) and verifying
+control of registers/payloads (stage 3). Everything here uses the shipped
+release binary plus normal binary tooling: the kernel core dumper, `gdb` in
+batch and interactive mode, and the ELF symbol tables. No sanitizer build is
+used or required anywhere in the lab.
 
 ## 1. Get a usable gdb
 
@@ -74,16 +76,71 @@ To get names for Chromium functions, build `symbol_level=1` or fetch the
 matching Breakpad symbols; without them, compare the PC against
 `objdump -d` and the fix commit.
 
-## 4. What this cannot do
+## 4. Live debugging: breakpoints, watchpoints (stages 1–3)
+
+Cores are what happens *after* a fault; the stages need to see the bug *before*
+it faults. The recipe without any sanitizer:
+
+1. **Get addresses from the patch.** Read the fix diff, find the touched
+   functions/files, and locate them in the shipped binary or its libraries:
+
+   ```bash
+   objdump -d --disassemble=<mangled> builds/.../chrome | head
+   readelf -Ws builds/.../lib*.so | grep <symbol>
+   ```
+
+   Chromium's main binary is stripped, so prefer symbols in `.so`s (base::,
+   blink core libraries) and module-relative offsets: record the load address
+   with `info proc mappings` and compute `base + offset` per run.
+
+2. **Run the browser under gdb** and break at those addresses (or use
+   `gdb -p <pid>` on an already-running lab browser — `ptrace_scope` must
+   allow it):
+
+   ```bash
+   gdb -q --args builds/.../chrome --user-data-dir=/tmp/lab-profile \
+       about:blank
+   (gdb) set pagination off
+   (gdb) break *0x55...            # or: break blink::Foo::Bar if you have symbols
+   (gdb) run
+   ```
+
+3. **Drive the testcase from the page** while gdb is stopped/continued; the
+   harness (`run-case.mjs`) can attach to the same URL, but for breakpoints it
+   is simpler to run the browser manually and load
+   `http://127.0.0.1:<port>/cases/<CVE>/<entry>`.
+
+4. **Watch the dangling slot** (the stage-1/2 workhorse for UAFs):
+
+   ```
+   (gdb) watch *(long*)0x7f...      # written after free? who and with what
+   (gdb) info breakpoints           # hit counts across the window
+   ```
+
+5. **Conditional breaks** keep a hot function quiet until the interesting
+   state: `break *0x... if $rdi == 0x1234`.
+
+6. **Corroborate a leak (stage 2):** break on the path the patch touches,
+   print the value at that instant (`x/gx $rax`, `x/s` for strings), and check
+   it against what the page published in `__LAB_RESULT`.
+
+7. **Verify hijack/payload (stage 3):** on the controlled crash, `info
+   registers rip rsp rbp`, `x/i $rip`, `info registers rdi rsi rdx rcx` — the
+   evidence is that these equal the values the PoC chose.
+
+Batch equivalent for a core is in §3; both write to `findings/raw/`.
+
+## 5. What this cannot do
 
 A use-after-free only segfaults if the freed memory is unmapped or reused as an
 incompatible object. PartitionAlloc keeps freed slots mapped, so a deterministic
-release-build crash is not guaranteed. That is exactly why the C++ regression
-test (which triggers the free and the reuse in one stack) is the canonical
-reproduction: under gdb it can be breakpointed without any sanitizer. ASAN only
-makes the report automatic.
+release-build crash is not guaranteed. That is exactly why the lab combines
+two normal techniques instead of waiting: reclaim the slot with a controlled
+object of the same size (shaping, from JS) and breakpoint/watch the use (this
+page). The C++ regression test triggers the free and the reuse in one stack,
+so it is the deterministic reproduction to run under gdb.
 
-## 5. Validating the pipeline
+## 6. Validating the pipeline
 
 A trivial crash confirms the plumbing (core written, gdb resolves the frame):
 

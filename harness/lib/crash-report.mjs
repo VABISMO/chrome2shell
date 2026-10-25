@@ -1,12 +1,14 @@
 /**
- * Core-dump analysis without ASAN or debug symbols.
+ * Core-dump analysis: the stage-1 workhorse, no sanitizer and no debug
+ * symbols required.
  *
  * A release Chromium build is stripped, so a crash report cannot name the
  * function unless the frame is in a shared library that exports symbols. It
- * still gives the decisive facts for a crash-only lab: signal, faulting
- * address, the instruction, the module that contains the PC, and a raw
- * backtrace. That is enough to tell a browser-process UAF from an unrelated
- * abort (OOM, sandbox, CHECK failure).
+ * still gives the decisive facts for stage 1 — and for stage 3, where the
+ * registers are the evidence: signal, faulting address, the instruction, the
+ * module that contains the PC, and a raw backtrace. That is enough to tell a
+ * browser-process UAF from an unrelated abort (OOM, sandbox, CHECK failure),
+ * and a chosen RIP from an accidental one.
  *
  * The helper intentionally uses only normal binary tooling: the kernel core
  * dumper, gdb in batch mode, and the ELF symbol tables.
@@ -25,12 +27,14 @@ export function findGdb(explicit) {
   return which.status === 0 ? which.stdout.trim() : null;
 }
 
-/** Newest core file in a directory, or null. */
-export function findCore(dir) {
+/** Newest core file in a directory, or null. `minMtimeMs` ignores stale cores
+ *  left over from earlier runs (they must never be analysed as this run's). */
+export function findCore(dir, minMtimeMs = 0) {
   try {
     const cores = readdirSync(dir)
       .filter((f) => f === "core" || f.startsWith("core."))
       .map((f) => ({ f, m: statSync(join(dir, f)).mtimeMs }))
+      .filter((c) => c.m >= minMtimeMs)
       .sort((a, b) => b.m - a.m);
     return cores.length ? join(dir, cores[0].f) : null;
   } catch {
@@ -41,25 +45,32 @@ export function findCore(dir) {
 /**
  * Run gdb in batch mode over a core file.
  * Returns { available, text } and never throws.
+ *
+ * Every command is passed as its own -ex: joining them into one -ex string
+ * makes gdb's parser abort mid-script, which used to drop `info registers`,
+ * `x/i $rip` and the module map from the report.
  */
 export function analyzeCore({ gdb, binary, core, timeoutMs = 90000 }) {
   if (!gdb) return { available: false, text: "gdb not found" };
   if (!core || !existsSync(core)) return { available: false, text: "no core file" };
 
-  const script = [
+  const commands = [
     "set pagination off",
     "set print symbol-loading off",
     "bt 20",
     "info registers rip rsp rbp",
     "x/i $rip",
     "info proc mappings",
-  ].join("\n");
+  ];
+  const args = ["-q", "-batch"];
+  for (const c of commands) args.push("-ex", c);
+  args.push(binary, core);
 
-  const r = spawnSync(
-    gdb,
-    ["-q", "-batch", "-ex", script, binary, core],
-    { encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 },
-  );
+  const r = spawnSync(gdb, args, {
+    encoding: "utf8",
+    timeout: timeoutMs,
+    maxBuffer: 32 * 1024 * 1024,
+  });
   const text = `${r.stdout ?? ""}${r.stderr ?? ""}`.trim();
   return { available: true, text, status: r.status, signal: r.signal };
 }

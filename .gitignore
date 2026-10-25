@@ -5,3 +5,7 @@ findings/raw/
 .DS_Store
 __pycache__/
 *.pyc
+turbo-*.cfg
+v8.log
+_tmp_*
+turbo-*.json

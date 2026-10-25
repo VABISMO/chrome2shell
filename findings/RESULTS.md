@@ -1,6 +1,9 @@
 # Lab results
 
 Date: 2026-10-24
+Scope: crash → leak → RCE with normal binary-debugging tools, no sanitizers
+([`docs/EXPLOITATION.md`](../docs/EXPLOITATION.md); per-stage tracker:
+[`STAGES.md`](STAGES.md)).
 Builds used:
 
 | Role | Version | Source |
@@ -8,6 +11,7 @@ Builds used:
 | Affected (6 CVEs from Oct 20) | 155.0.8059.84 | Chrome for Testing |
 | First patched | 156.0.8078.47 | Chrome for Testing |
 | Affected (CVE-2026-110922) | 155.0.8059.79 | Chrome for Testing |
+| Affected / first patched (CVE-2026-85046) | 152.0.7977.75 / 152.0.7977.82 | Chrome for Testing |
 | System Chromium (initial checks) | 155.0.8059.39 | distro |
 
 ---
@@ -77,21 +81,28 @@ official builds, gives:
 On 155 the LCP observer receives the pseudo-element; on 156
 `Performance::CanExposeNode()` filters it out and `element` is `null`. This
 proves the vulnerable path exists and that the patch cuts it. It does not by
-itself prove memory corruption: that requires ASAN.
+itself prove memory corruption: that needs the observable state of stage 1
+(shaping + live `gdb`) — see [`../docs/EXPLOITATION.md`](../docs/EXPLOITATION.md) §1.
 
 ### Remaining cases
 
 The accessibility, caret and WebRTC cases do exercise the vulnerable path
 (accessibility forced with `--force-renderer-accessibility`, fake audio device)
-but **do not abort in release builds**. That is expected:
+but **do not fault in release builds**. That is expected, and it is exactly
+what the stage-1 techniques exist for:
 
 - `StringImpl` UAF (113271) and AX object UAF (113279): the heap rarely
-  collides without ASAN.
-- Layout reentrancy during paint (113280): requires DCHECK/ASAN or exact timing.
-- Audio thread race (113303): needs a real audio backend and TSAN.
+  collides by chance — reclaim the freed slot with a controlled object of the
+  same size and watch the reentrant use in `gdb`.
+- Layout reentrancy during paint (113280): break inside `PaintCaret()` on the
+  patch's own sequence instead of waiting for natural timing.
+- Audio thread race (113303): breakpoint the unsynchronized `initialized_`
+  read and drive attach/teardown pairs; the window is then deterministic
+  instead of random.
 
-A "no crash" here **does not invalidate** the CVE; it only means the detection
-environment is too weak.
+A "no crash" here **does not invalidate** the CVE; it only means passively
+waiting for a fault is the wrong detection method. Next actions per case are
+tracked in [`STAGES.md`](STAGES.md).
 
 ## 4. CVE-2026-110922: web-content reproducer (negative result)
 
@@ -195,32 +206,48 @@ it is not reachable with controllable timing from web content on this build.
 The regression test evicts synchronously from `DidStartNavigation`, which
 content cannot schedule.
 
-## 5. Release-build crashes without ASAN (core + gdb)
+## 5. Release-build crashes with core + gdb (no sanitizers)
 
-ASAN needs a multi-hour build, so the lab also supports the ordinary
-binary-debugging path, documented in [`docs/GDB.md`](../docs/GDB.md):
+The lab's crash-analysis path is the ordinary binary-debugging path, documented
+in [`docs/GDB.md`](../docs/GDB.md) — no sanitizer build is involved anywhere:
 
 - the harness spawns the browser through `sh -c 'ulimit -c unlimited; exec "$@"'`
   with the profile as working directory and `--disable-breakpad`, so the kernel
   writes a core instead of Crashpad swallowing the signal;
 - on a crash it runs `gdb -q -batch` over the core with `bt`, registers,
   `x/i $rip` and `info proc mappings`, writes the full output to
-  `findings/raw/<CVE>.attemptN.core.txt` and prints a digest;
+  `findings/raw/<CVE>.attemptN.core.txt` (or
+  `findings/raw/<CVE>.<stage>.<label>.core.txt` when run through
+  `run-case.mjs --cores`) and prints a digest;
 - the core is deleted afterwards unless `--keep-core` is passed.
 
 The release binary is stripped, so Chromium frames are addresses, but the
 signal, faulting address, instruction and containing module are enough to
 separate a browser-process `SIGSEGV` from an unrelated CHECK (`SIGABRT`).
 
-The pipeline was validated end to end with a deliberately crashing binary:
-the harness produced the core, resolved `#0 main () at crashy.c:1`, reported
-`crash=true` and exited `42`.
+The pipeline was validated end to end twice: first with a deliberately
+crashing binary (the harness produced the core, resolved `#0 main () at
+crashy.c:1`, reported `crash=true` and exited `42`), and now with a real
+renderer core of the release build itself — `chrome://crash` under
+`oracle.mjs --cores-dir` writes a kernel core that gdb reports as
+`Program terminated with signal SIGSEGV`, faulting instruction
+`movl $0x0,0x0`, plus registers and the module map. Two bugs were found and
+fixed while wiring cores into `run-case.mjs --cores`:
+
+1. `analyzeCore` passed the whole command list joined in a single `-ex`; gdb's
+   parser aborted mid-script, so the report silently lacked `info registers`,
+   `x/i $rip` and the module map. Each command is now its own `-ex`.
+2. `findCore` could pick a stale core left by an earlier run and analyse it as
+   this run's crash; cores are now filtered by run start time (older ones are
+   preserved, never analysed).
 
 Caveat: a UAF only faults when the freed slot is unmapped or reused as an
 incompatible object. PartitionAlloc keeps it mapped, so a release build may not
-crash even with a real UAF. That is why the C++ regression test remains the
-deterministic reproduction, and gdb is used to breakpoint it rather than to
-wait for a fault.
+crash even with a real UAF. That is why the lab does not wait for the fault:
+the freed slot is reclaimed with a controlled object of the same size (stage-1
+shaping), and the use is watched live — breakpoints on the lines the patch
+changes, hardware watchpoints over the dangling slot. The C++ regression test
+remains the deterministic reproduction and is breakpointed the same way.
 
 ## 6. Patch recovery for the in-the-wild backlog
 
@@ -253,25 +280,105 @@ Two retrieval problems had to be fixed in `scripts/find_fixes.py`:
 The submodule searches also work without a roll hit: `CVE-2026-3910` was found
 directly in `v8/v8` (`7076ba135f`, "[maglev] disable Phi untagging").
 
-## 7. Limitations and next steps
+## 7. First RCE-ladder case: CVE-2026-85046 (stages 1–2 done)
 
-1. **ASAN build.** It is the next step with the best cost/benefit ratio.
-   `docs/ASAN.md` describes how to build with `is_asan=true`. With ASAN, cases
-   113271/113279/113280/113303 are much more likely to report the
-   use-after-free.
-2. **CVE-2026-110922.** Web content now reaches every step except the
+Builds fetched with the new parallel mode
+(`scripts/fetch_chrome.py --connections 16`, added because a single stream
+was capped at ~60 KB/s on this link): vulnerable `152.0.7977.75` (last build
+before the fix) vs patched `152.0.7977.82`.
+
+### Stage 1 — behavioral differential (the upstream assertion, page-style)
+
+| Build | `JSON.stringify(bad)` | `bad.join("~")` |
+|-------|----------------------|-----------------|
+| 152.0.7977.75 (vulnerable) | `[8595714,8595770]` | `8595714~8595770` |
+| 152.0.7977.82 (fixed) | `[{},{}]` | `[object Object]~[object Object]` |
+
+Verdict: **`behavioral-difference`**. The trigger is the patch's own
+`regress-crbug-542403045.js` (mid-tier forced with natives syntax declared in
+`case.json -> flags`, exactly as the mjsunit test declares its flags).
+`%HasSmiElements(bad) && bad[0] === object` — the upstream assertion — was
+verified `true` on the vulnerable build and `false` on the patched one
+(`diag3.html`: 3 runs × 3 attempts, 100% deterministic).
+
+### Stage 2 — leak (addrof)
+
+`poc-leak.html` (`--stage leak`): vulnerable `level: "leak (addrof: object ->
+compressed pointer as integer)"`, patched `level: "none"`.
+
+| Signal | Vulnerable | Fixed |
+|--------|-----------|-------|
+| numeric values leaked | 10 | 0 |
+| all in compression-cage integer range | true | false |
+| same object → same value across independent triggers | true (`8576308`) | false |
+| different object → different value | true | false |
+| neighbour pair byte delta | **16 B** (one object size) | null |
+
+The neighbour-pair check is the address-granularity corroboration: two fresh
+adjacent objects decode to integers 8 apart = 16 bytes at `ptr >> 1` encoding
+— non-address data does not land on that structure. Accepted in-band as the
+corroboration step of `docs/EXPLOITATION.md` §2 (recorded as a methodology
+amendment: gdb eyeballing is no longer the only accepted form).
+
+### Methodology findings (worth keeping)
+
+1. **Natural tier-up gap.** The page's natural warmup (70k–100k calls,
+   `diag4-trace.html`) does **not** reach the confused inlining state, while
+   the upstream force recipe does so deterministically. A no-flag,
+   web-realistic trigger is an open item — solve before claiming a
+   weaponizable PoC; record the warmup/tiering conditions that reach it.
+2. **Plain-JS discriminators for elements-kind confusion.** `%HasSmiElements`
+   is natives-only; `JSON.stringify`/`Array#join` are Smi-specialized
+   consumers and decode confused pointers as numbers. Found by differential
+   probing (`diag5.html`), not by reasoning about IC stubs.
+3. **Renderer V8 output is not reachable from the harness** (`--trace-opt`,
+   `%DebugPrint`): Playwright does not capture renderer stderr headless.
+   Options recorded in the case README (direct gdb launch, logging flags).
+4. Two harness bugs were fixed earlier today and matter for every stage:
+   `analyzeCore`'s joined `-ex` (registers/`x/i`/module map were silently
+   dropped) and stale-core misattribution (`findCore` mtime filter).
+
+## 8. Limitations and next steps
+
+The next steps follow the three-stage scope
+([`../docs/EXPLOITATION.md`](../docs/EXPLOITATION.md), tracker:
+[`STAGES.md`](STAGES.md)). No sanitizer build is part of the plan.
+
+1. **Stage 1 on the four stress cases (113271/113279/113280/113303).** Stop
+   iterating and start shaping: reclaim the freed object with a controlled one
+   of the same size, breakpoint the exact lines the fix changes, watch the
+   dangling slot. Evidence target: differential crash or a recorded live
+   observation of the corrupted state.
+2. **CVE-2026-113072** already produced stage-2 evidence (exposure of a node
+   the API must not return). Decide whether it can carry address-like data; if
+   not, it closes at exposure level as a regression test.
+3. **CVE-2026-110922.** Web content now reaches every step except the
    synchronous eviction: the stalled host is alive at `back`, the restore is
    evicted ~57 ms later by SW activation, and the delay sweep (600–1200 ms)
-   does not move the eviction into `BeginNavigation()`. Remaining options are
-   the patch's own `content_browsertests` regression test on a debug build
+   does not move the eviction into `BeginNavigation()`. Remaining option: the
+   patch's own `content_browsertests` regression test on a debug build
    (`--gtest_filter='*EvictBackForwardCacheDuringPrerenderActivationCheck*'`),
    breakpointed with gdb in `NavigationRequest::BeginNavigation`, or a
    browser-process debugger breakpoint in `DidStartNavigation`. Do not retry
    through Playwright: CDP without tab-target support disables prerendering
    (status 69).
-3. **CVE-2026-113341.** Without an Imagination GPU there is no possible
+4. **CVE-2026-85046 — stage 3 recon complete, fakeobj blocked (honest
+   ceiling: rungs 1–3).** Stages 1–2 are done (this document, §7): the
+   trigger reproduces the upstream assertion differentially and the confusion
+   yields an addrof corroborated at address granularity. Stage-3 recon
+   (`diag6`–`diag9` in the case directory) eliminated four fakeobj sources
+   with evidence: object-stores heal the array; major-GC reclaim fails
+   because marking follows odd slots (WeakRef model M1, 360k plants, 0
+   aliases); the missing-write-barrier/minor-GC window does not open in the
+   reachable shapes; the double-elements union is pre-rejected by the patch's
+   own bailout. Remaining candidates: refined WB timing (young content in old
+   elements at copy-back with the store buffer flushed) and JIT-schedule
+   stores under mismatched feedback; plus the standing no-flag trigger and
+   renderer-stderr (`%DebugPrint`) items from §7.
+5. **CVE-2026-113341.** Without an Imagination GPU there is no possible
    reproduction. The value is in analyzing the workaround and comparing it with
    `GLES2DecoderImpl`.
-4. **False negatives.** Race cases run a limited number of iterations.
-   Increasing `iterations` and running in parallel improves the detection rate
-   but does not guarantee it.
+6. **False negatives.** Race cases run a limited number of iterations.
+   More `iterations` in parallel helps, but it is not the tool of choice: a
+   breakpoint on the racy read/write makes the window deterministic on the
+   first hit.

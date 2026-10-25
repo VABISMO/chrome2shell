@@ -1,8 +1,17 @@
-# Chromium ASAN build
+# Chromium ASAN build — optional reference, NOT part of this lab's workflow
 
-Chrome for Testing ships `release` builds: a UAF may never abort. To actually
-characterize the bugs in the exploitability report you need a build with
-AddressSanitizer.
+> The lab's methodology is normal binary debugging (`gdb`, core dumps,
+> `objdump`, `strace`) on the shipped release builds — see
+> [`GDB.md`](GDB.md) and [`EXPLOITATION.md`](EXPLOITATION.md). Sanitizer
+> builds are not required, not used for stage evidence, and the lab does not
+> rebuild Chromium. This file is kept only as a reference for anyone who
+> independently wants a sanitizer report; nothing in `harness/` or `docs/`
+> depends on it.
+
+Chrome for Testing ships `release` builds: a UAF may never abort by itself.
+The lab's answer is heap shaping plus live `gdb` breakpoints/watchpoints, not
+a rebuilt binary. If you still want a build with AddressSanitizer for your own
+cross-check, the procedure is below.
 
 ## Realistic cost
 

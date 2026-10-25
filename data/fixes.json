@@ -142,5 +142,29 @@
       "url": "https://github.com/chromium/chromium/commit/e045399a1ecb7ee16e1a7bcbcd8ea59d283dfb07",
       "patch": "patches/CVE-2026-2441.patch"
     }
+  },
+  "CVE-2024-4761": {
+    "bug_id": "339458194",
+    "fix": {
+      "repo": "v8/v8",
+      "sha": "f320600cd1f48ba6bb57c0395823fe0c5e5ec52e",
+      "subject": "[wasm-gc] Only normalize JSObject targets in SetOrCopyDataProperties",
+      "message": "[wasm-gc] Only normalize JSObject targets in SetOrCopyDataProperties\n\nBug: 339458194\nChange-Id: I4d6eebdd921971fa28d7c474535d978900ba633f\nReviewed-on: https://chromium-review.googlesource.com/c/v8/v8/+/5527397\nReviewed-by: Rezvan Mahdavi Hezaveh <rezvan@chromium.org>\nCommit-Queue: Shu-yu Guo <syg@chromium.org>\nCr-Commit-Position: refs/heads/main@{#93811}",
+      "date": "2024-05-09T12:03:28.000-07:00",
+      "url": "https://github.com/v8/v8/commit/f320600cd1f48ba6bb57c0395823fe0c5e5ec52e",
+      "patch": "patches/CVE-2024-4761.patch"
+    }
+  },
+  "CVE-2024-0519": {
+    "bug_id": "1517354",
+    "fix": {
+      "repo": "v8/v8",
+      "sha": "389ea9be7d68bb189e16da79f6414edbd4f7594f",
+      "subject": "[runtime] Drop fast last-property deletion",
+      "message": "[runtime] Drop fast last-property deletion\n\nThis interacts badly with other optimizations and isn't particularly\ncommon.\n\nBug: chromium:1517354\nChange-Id: I7adb51a8fc0ec47eaeb911ca2a4cbc517088e416\nReviewed-on: https://chromium-review.googlesource.com/c/v8/v8/+/5185340\nCommit-Queue: Leszek Swirski <leszeks@chromium.org>\nReviewed-by: Leszek Swirski <leszeks@chromium.org>\nAuto-Submit: Toon Verwaest <verwaest@chromium.org>\nCommit-Queue: Toon Verwaest <verwaest@chromium.org>\nCr-Commit-Position: refs/heads/main@{#91782}",
+      "date": "2024-01-11T10:47:17.000+01:00",
+      "url": "https://github.com/v8/v8/commit/389ea9be7d68bb189e16da79f6414edbd4f7594f",
+      "patch": "patches/CVE-2024-0519.patch"
+    }
   }
 }
