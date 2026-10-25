@@ -85,6 +85,20 @@ Every stage obeys the same rule: **the PoC must fail on the first patched
 build.** Methodology, tool matrix and per-CVE plans:
 [`docs/EXPLOITATION.md`](docs/EXPLOITATION.md).
 
+### Completed PoCs (evidence in-tree, no RCE claim)
+
+| CVE | Stage | What it does | Evidence |
+|-----|-------|--------------|----------|
+| **CVE-2026-85046** — V8 sort type confusion (in-the-wild, 2026-09) | **1 — differential trigger** | reproduces the upstream mjsunit assertion from plain JS: `[8595714,…]` on `152.0.7977.75` vs `[{},{}]` on `.82` | `cases/CVE-2026-85046/testcase.html`, `findings/raw/CVE-2026-85046.crash.*.json` |
+| **CVE-2026-85046** | **2 — addrof leak PoC** | object → compressed-pointer integer:10 values in cage range, **same object → same value**, neighbour pair = **16 B** (address granularity); patched build leaks0 | `cases/CVE-2026-85046/poc-leak.html`, `findings/raw/CVE-2026-85046.leak.*.json` |
+| CVE-2026-113072 — CSS/LCP (Oct release) | 1–2 — exposure | LCP hands out the hidden `::before` node on155, `null` on156 | `cases/CVE-2026-113072/poc-leak.html` |
+
+**Stage 3 (RCE) has no completed PoC yet.** The chain campaign — 85046's
+addrof + CVE-2026-3910's raw-bit store on `146.0.7680.72` (a build vulnerable
+to both) — is in progress with the d8 debug toolchain; the table below covers
+the October release cases, and **per-stage status for every CVE (including
+85046/3910) lives in [`findings/STAGES.md`](findings/STAGES.md)**.
+
 ### Exploited in the wild since 2023-10
 
 These 20 are the highest-priority targets: Google's own advisory says an
