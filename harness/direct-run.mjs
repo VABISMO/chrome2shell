@@ -152,7 +152,14 @@ if (args.jsFlags) flags.push(`--js-flags=${args.jsFlags}`);
 flags.push(...args.extra, `http://127.0.0.1:${port}${args.page.startsWith("/") ? "" : "/"}${args.page}`);
 
 let stderr = "";
-const chrome = spawn(args.browser, flags, { stdio: ["ignore", "pipe", "pipe"] });
+// LAB_CHROME_STDOUT_INHERIT=1: chrome's stdout follows the parent's (e.g. a
+// PTY under `script`) instead of a pipe — renderer V8 output (%DebugPrint,
+// --trace-gc) only reaches us when the browser's stdout is a TTY, because
+// Chromium redirects child stdout to /dev/null for non-tty parents.
+const chromeStdio = process.env.LAB_CHROME_STDOUT_INHERIT === "1"
+  ? ["ignore", "inherit", "pipe"]
+  : ["ignore", "pipe", "pipe"];
+const chrome = spawn(args.browser, flags, { stdio: chromeStdio });
 chrome.stderr.on("data", (d) => { stderr += d; });
 chrome.stdout.on("data", (d) => { stderr += d; });
 chrome.on("exit", (code, sig) => { chromeExited = { code, sig }; });
