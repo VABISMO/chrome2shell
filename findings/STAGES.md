@@ -15,7 +15,7 @@ CVE-2026-110922: `155.0.8059.79` vs `155.0.8059.84`).
 
 | CVE | Class | Crash (1) | Leak (2) | RCE (3) | Next action |
 |-----|-------|-----------|----------|---------|-------------|
-| CVE-2026-113072 | LCP exposes `::before` | 🟡 behavioral difference (no fault; path proven on both builds) | 🟡 exposure level: `entry.element` returns a hidden `::before` node on 155, `null` on 156 | ⏳ | decide whether the exposed node can carry address-like data; otherwise close at exposure level and keep as regression test |
+| CVE-2026-113072 | LCP exposes `::before` | 🟢 **CLOSED (exposure level)** — differential re-verified fresh: 155 → `level: exposure` (ctor Element, tag `::before`, parent DIV); 156 → `level: none`. No address-like channel: JS hands out no pointer representation of the node (`addressLikeValue=null`); the class has no memory-corruption path | 🟢 closed with the same differential (handle present/absent) | 🚫 out-of-scope (CSS exposure class, no corruption primitive) | closed — keep as regression test
 | CVE-2026-113279 | AX UAF (image maps) | 🧪 800 iterations, no fault in release | ⏳ | ⏳ | shape `AXObject` reuse of the freed slot; `gdb` breakpoint on the fix lines (`InvalidateChildren` / `ChildrenChangedWithCleanLayout`) |
 | CVE-2026-113271 | dangling `AtomicString` ref | 🧪 700 iterations, no fault in release | ⏳ | ⏳ | force attribute-storage reallocation inside the same stack; hardware watchpoint on the freed `StringImpl` |
 | CVE-2026-113280 | layout reentrancy in paint | 🧪 1500 frames, no fault in release | ⏳ | ⏳ | reproduce the patch's own sequence (dirty layout + caret); breakpoint `FrameCaret::PaintCaret` before/after the fix flag |
