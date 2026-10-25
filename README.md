@@ -91,6 +91,8 @@ build.** Methodology, tool matrix and per-CVE plans:
 |-----|-------|--------------|----------|
 | **CVE-2026-85046** — V8 sort type confusion (in-the-wild, 2026-09) | **1 — differential trigger** | reproduces the upstream mjsunit assertion from plain JS: `[8595714,…]` on `152.0.7977.75` vs `[{},{}]` on `.82` | `cases/CVE-2026-85046/testcase.html`, `findings/raw/CVE-2026-85046.crash.*.json` |
 | **CVE-2026-85046** | **2 — addrof leak PoC** | object → compressed-pointer integer:10 values in cage range, **same object → same value**, neighbour pair = **16 B** (address granularity); patched build leaks0 | `cases/CVE-2026-85046/poc-leak.html`, `findings/raw/CVE-2026-85046.leak.*.json` |
+| **CVE-2026-2441** — CSS font-feature-values UAF (in-the-wild, 2026-02) | **1 — crash PoC** | iterates `rule.styleset` while deleting + mass-setting (aliases HashMap rehash → dangling iterator): renderer **SEGV 4/4** on `145.0.7632.67`; core shows `rax=0x4055210000000000` (IEEE754 double bits deref'd as pointer) | `cases/CVE-2026-2441/testcase.html`, `findings/raw/CVE-2026-2441.crash.*.json` + 4 cores |
+| **CVE-2026-2441** | **2 — UAF-read leak PoC** | after the free, reclaim the bucket buffer with24 foreign `@font-feature-values` maps (same size class): the stale iterator returns **foreign keys that never existed in the original map** (`f0x1`, `f13x2`, …) = read-after-free of replaced memory | `cases/CVE-2026-2441/poc-leak.html`, `findings/raw/CVE-2026-2441.leak.vulnerable.json` |
 | CVE-2026-113072 — CSS/LCP (Oct release) | 1–2 — exposure | LCP hands out the hidden `::before` node on155, `null` on156 | `cases/CVE-2026-113072/poc-leak.html` |
 
 **Stage 3 (RCE) has no completed PoC yet.** The chain campaign — 85046's
@@ -142,7 +144,7 @@ bug. The roll is kept as `patches/<CVE>.roll.patch` for provenance.
 | 2026-03-31 | CVE-2026-5281 | Use after free in Dawn (wire) | `3c890398bd` | google/dawn | stage 1 first |
 | 2026-03-13 | CVE-2026-3909 | Out of bounds write in Skia (atlas) | `0cab3e4ee3` | google/skia | write primitive |
 | 2026-03-12 | CVE-2026-3910 | Inappropriate implementation in V8 (Maglev Phi) | `7076ba135f` | v8/v8 | type confusion ladder |
-| 2026-02-13 | CVE-2026-2441 | Use after free in CSS (font feature values) | `e045399a1e` | chromium | stage 1 first |
+| 2026-02-13 | CVE-2026-2441 | Use after free in CSS (font feature values) | `e045399a1e` | chromium | **stages 1–2 done** (SEGV differential + UAF-read leak via foreign-buffer reclaim) |
 
 All 12 recovered patches (7 Oct-2026 cases + these 5) contain enough context to
 derive a reproducer; 10 of them add or change a regression test. That test is
