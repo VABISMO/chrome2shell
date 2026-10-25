@@ -161,7 +161,7 @@ const chromeStdio = process.env.LAB_CHROME_STDOUT_INHERIT === "1"
   : ["ignore", "pipe", "pipe"];
 const chrome = spawn(args.browser, flags, { stdio: chromeStdio });
 chrome.stderr.on("data", (d) => { stderr += d; });
-chrome.stdout.on("data", (d) => { stderr += d; });
+if (chrome.stdout) chrome.stdout.on("data", (d) => { stderr += d; });
 chrome.on("exit", (code, sig) => { chromeExited = { code, sig }; });
 
 const timeout = setTimeout(() => resolveResult({ ok: false, error: "timeout waiting for result" }), args.timeoutMs);

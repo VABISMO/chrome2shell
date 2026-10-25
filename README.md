@@ -98,7 +98,7 @@ build.** Methodology, tool matrix and per-CVE plans:
 | **CVE-2026-2441** | **2 — UAF-read leak PoC** | after the free, reclaim the bucket buffer with24 foreign `@font-feature-values` maps (same size class): the stale iterator returns **foreign keys that never existed in the original map** (`f0x1`, `f13x2`, …) = read-after-free of replaced memory | `cases/CVE-2026-2441/poc-leak.html`, `findings/raw/CVE-2026-2441.leak.vulnerable.json` |
 | CVE-2026-113072 — CSS/LCP (Oct release) | 1–2 — exposure | LCP hands out the hidden `::before` node on155, `null` on156 | `cases/CVE-2026-113072/poc-leak.html` |
 
-**Stage 3 (RCE) has no completed PoC yet.** The chain campaign — 85046's
+**Stage 3 status:** CVE-2026-3910 = 3/3 (full chain: crash → leak → arbitrary heap R/W, published exploit reproduced). CVE-2026-85046 stage 3 = standalone fakeobj proven impossible from JS (self-describing tags + reader-deopt evidence, 5 raw-write sources eliminated; builds with 85046 and 3910 features are disjoint). The chain campaign — 85046's
 addrof + CVE-2026-3910's raw-bit store on `146.0.7680.72` (a build vulnerable
 to both) — is in progress with the d8 debug toolchain; the table below covers
 the October release cases, and **per-stage status for every CVE (including
