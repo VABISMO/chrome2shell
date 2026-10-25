@@ -36,6 +36,7 @@ function parseArgs(argv) {
     else if (a === "--out") out.out = argv[++i];
     else if (a === "--stderr") out.stderrPath = argv[++i];
     else if (a === "--timeout") out.timeoutMs = Number(argv[++i]);
+    else if (a === "--gpu") out.gpu = true;
     else if (a === "--extra") out.extra.push(argv[++i]);
     else if (!out.page) out.page = a;
   }
@@ -71,10 +72,27 @@ let resolveResult;
 const resultPromise = new Promise((r) => { resolveResult = r; });
 let serverResult = null;
 let chromeExited = null;
+let serverPings = 0;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   console.error(`[req] ${req.method} ${url.pathname}${url.search.slice(0, 60)}`);
+
+  // cross-origin readiness handshake: a popup victim on the same server pings
+  // /ping when its GPU work is armed; the opener polls /status (CORS-open)
+  if (req.method === "GET" && url.pathname === "/ping") {
+    serverPings++;
+    res.writeHead(204).end();
+    return;
+  }
+  if (req.method === "GET" && url.pathname === "/status") {
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-store",
+    }).end(JSON.stringify({ pings: serverPings }));
+    return;
+  }
 
   if (req.method === "POST" && url.pathname === "/collect") {
     let body = "";
@@ -114,7 +132,11 @@ await new Promise((r) => server.listen(0, "127.0.0.1", r));
 const port = server.address().port;
 
 const flags = [
-  "--headless", "--no-sandbox", "--disable-gpu",
+  "--headless", "--no-sandbox",
+  ...(args.gpu
+    ? // Ganesh (atlas/text) path needs the GPU process: SwiftShader GL
+      ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--enable-gpu-rasterization"]
+    : ["--disable-gpu"]),
   "--disable-background-networking", "--disable-component-extensions",
   "--disable-component-update", "--disable-sync", "--no-first-run",
   "--metrics-recording-only", "--disable-field-trial-config",
