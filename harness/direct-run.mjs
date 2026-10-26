@@ -17,6 +17,14 @@
  *
  * Exit code: 0 = result collected, 42 = chrome crashed before reporting,
  * 3 = timeout waiting for the result.
+ *
+ * Two extra channels make evidence survive a dead renderer:
+ *   - POST /progress — cases send their phase trail here; it accumulates
+ *     without consuming the single window.__LAB_RESULT post, so a renderer
+ *     that dies mid-stage still leaves (trail + stderr signal) as the pair.
+ *   - a fatal signal / V8 FATAL in stderr resolves the run early
+ *     (error "renderer-crashed", exit 42) instead of burning the whole
+ *     --timeout on a process that can no longer report anything.
  */
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -56,13 +64,23 @@ if (!existsSync(args.browser)) {
 // The poller is injected at the very top of the page: it waits for
 // window.__LAB_RESULT and POSTs it same-origin (no CORS, no case changes).
 const INJECT = `<script>(function(){
+// visibility: surface page errors immediately (first-wins like the result)
+window.addEventListener('error', function(ev){
+  try{ fetch('/collect?e='+encodeURIComponent('ERR:'+(ev.message||'')+'@'+(ev.filename||'')+':'+(ev.lineno||0))); }catch(_){}
+}, true);
+window.addEventListener('unhandledrejection', function(ev){
+  try{ fetch('/collect?e='+encodeURIComponent('REJ:'+String(ev.reason).slice(0,150))); }catch(_){}
+});
+// liveness heartbeat: shows whether renderer timers keep firing (a hang or a
+// frozen page makes them stop) — /hb never resolves the run
+setInterval(function(){ try{ fetch('/hb'); }catch(_){} }, 30000);
 var iv=setInterval(function(){
   if(window.__LAB_RESULT){
     clearInterval(iv);
     try{
       var b=btoa(unescape(encodeURIComponent(JSON.stringify(window.__LAB_RESULT))));
       navigator.sendBeacon('/collect',b)||fetch('/collect',{method:'POST',body:b});
-    }catch(e){fetch('/collect?e='+encodeURIComponent(String(e)));}
+    }catch(e){fetch('/collect?e='+encodeURIComponent('PUB:'+String(e)));}
   }
 },50);
 setTimeout(function(){clearInterval(iv);fetch('/collect?e=timeout');},120000);
@@ -71,6 +89,10 @@ setTimeout(function(){clearInterval(iv);fetch('/collect?e=timeout');},120000);
 let resolveResult;
 const resultPromise = new Promise((r) => { resolveResult = r; });
 let serverResult = null;
+// Crash-safe phase trail: cases POST here as they go. The single
+// window.__LAB_RESULT post is what resolves the run, but a renderer that dies
+// mid-stage still leaves this trail next to its stderr signal.
+let progress = [];
 let chromeExited = null;
 let serverPings = 0;
 
@@ -78,6 +100,11 @@ const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
   console.error(`[req] ${req.method} ${url.pathname}${url.search.slice(0, 60)}`);
 
+  if (req.method === "GET" && url.pathname === "/hb") {
+    console.error("[hb] renderer heartbeat");
+    res.writeHead(204).end();
+    return;
+  }
   // cross-origin readiness handshake: a popup victim on the same server pings
   // /ping when its GPU work is armed; the opener polls /status (CORS-open)
   if (req.method === "GET" && url.pathname === "/ping") {
@@ -91,6 +118,19 @@ const server = createServer(async (req, res) => {
       "Access-Control-Allow-Origin": "*",
       "Cache-Control": "no-store",
     }).end(JSON.stringify({ pings: serverPings }));
+    return;
+  }
+
+  // crash-safe phase trail (accumulated, does NOT consume the result post)
+  if (req.method === "POST" && url.pathname === "/progress") {
+    let body = "";
+    for await (const chunk of req) body += chunk;
+    try {
+      progress.push(JSON.parse(Buffer.from(body, "base64").toString("utf8")));
+    } catch (e) {
+      progress.push({ bad: String(e).slice(0, 80) });
+    }
+    res.writeHead(204).end();
     return;
   }
 
@@ -152,6 +192,17 @@ if (args.jsFlags) flags.push(`--js-flags=${args.jsFlags}`);
 flags.push(...args.extra, `http://127.0.0.1:${port}${args.page.startsWith("/") ? "" : "/"}${args.page}`);
 
 let stderr = "";
+// A fatal signal in the trace means the renderer (or the browser) is gone:
+// no __LAB_RESULT can arrive any more, so stop burning the --timeout budget.
+// The 700 ms grace lets a trailing beacon/publish land first.
+let earlyResolved = false;
+const onStderr = (d) => {
+  stderr += d;
+  if (!earlyResolved && /Received signal \d+|FATAL ERROR|==== JS stack trace|Fatal process out of memory/.test(stderr)) {
+    earlyResolved = true;
+    setTimeout(() => resolveResult({ ok: false, error: "renderer-crashed" }), 700);
+  }
+};
 // LAB_CHROME_STDOUT_INHERIT=1: chrome's stdout follows the parent's (e.g. a
 // PTY under `script`) instead of a pipe — renderer V8 output (%DebugPrint,
 // --trace-gc) only reaches us when the browser's stdout is a TTY, because
@@ -160,8 +211,8 @@ const chromeStdio = process.env.LAB_CHROME_STDOUT_INHERIT === "1"
   ? ["ignore", "inherit", "pipe"]
   : ["ignore", "pipe", "pipe"];
 const chrome = spawn(args.browser, flags, { stdio: chromeStdio });
-chrome.stderr.on("data", (d) => { stderr += d; });
-if (chrome.stdout) chrome.stdout.on("data", (d) => { stderr += d; });
+chrome.stderr.on("data", onStderr);
+if (chrome.stdout) chrome.stdout.on("data", onStderr);
 chrome.on("exit", (code, sig) => { chromeExited = { code, sig }; });
 
 const timeout = setTimeout(() => resolveResult({ ok: false, error: "timeout waiting for result" }), args.timeoutMs);
@@ -187,6 +238,7 @@ const report = {
   error: outcome.error ?? null,
   result: outcome.result ?? null,
   chromeExit: chromeExited,
+  progress,
   stderrBytes: stderr.length,
 };
 if (args.out) {
