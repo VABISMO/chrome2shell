@@ -136,3 +136,27 @@ validation must run in the **browser 146.0.7680.72** (V8 14.6.202.11), which
 is proven vulnerable (rung-5 landing). `cases/CVE-2026-3910/d8/rung6-validate.js`
 is kept as the payload-logic harness for a future pre-fix d8 build
 (build at `git checkout 7076ba135~1` in a full V8 clone, then it applies).
+
+## Microscope verdicts — CDP tracing (2026-10-27)
+
+Tool: `harness/ax-run.mjs --trace-cats "<cats>"` (CDP Tracing domain;
+**Tracing.end must run explicitly — dataCollected flushes only at end**).
+
+- **CVE-2026-113279**: under the burst/sweep triggers the AX lifecycle runs
+  for real: `ProcessDeferredUpdatesLifecycleStage` ×46,
+  `SerializeLifecycleStage` ×46, `FinalizingTreeLifecycleStage` ×44 per run.
+  The vulnerable function's phase IS exercised; the crash-shaped interleave
+  (removal mid-traversal with a live map AXObject whose area children are
+  destroyed by `ChildrenChangedWithCleanLayout(image)`) still does not fire
+  in release shapes tested. Next: force a `<map>` AXObject into the tree
+  (aria-label/role) so `RemoveSubtreeInternal` runs the map branch with
+  `object != null`, and interleave removals INSIDE a single deferred pass
+  (already the burst cadence — combine with the forced map object).
+- **CVE-2026-113280**: ZERO `Paint`-or-`Layout`-inside-`PrePaint` nesting in
+  builds 145, 146, 152 and 155 across all page variants (filtered ancestor,
+  foreignObject, filter-on-editable, will-change, iframe) — the commit's
+  "feImage filter painting during PrePaintTreeWalk" context is never reached.
+  Either a narrower page condition is required (candidate: SVG-root filter
+  with external feImage href) or the pipeline landed between 155 and the
+  pre-156 fix window. Trace-evidence over guesses: any future variant must
+  first show non-zero nesting before burning crash-hunt runs.
