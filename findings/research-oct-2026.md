@@ -119,3 +119,20 @@ node harness/ax-run.mjs cases/CVE-2026-113279/map-remove-ax.html \
   --out ~/.cache/cvelab-runs/sweep.json --stderr ~/.cache/cvelab-runs/sweep.err
 node harness/axprobe.mjs /tmp/mapstatic.html   # inspect AX tree preconditions
 ```
+
+## Tooling note: local d8 cannot reproduce CVE-2026-3910 stage-0 (2026-10-27)
+
+`/home/cryptocalypse/v8dbg/src/out.debug26/d8` is built from V8 checkout
+`041a33f6` (2026-03-10) whose `MaglevGraphBuilder::CanElideWriteBarrier` is
+already refactored with the post-fix guard shape
+(`RecordSmiUseIfNeeded` / `uses_require_smi()`); the fix commit `7076ba135`
+(from `patches/CVE-2026-3910.patch`) is not even in that repo's history.
+Evidence (clobber discriminator `/tmp/opencode/uaf-discrim.js` sequence):
+after `major_gc; trigger(0x10000000); minor_gc` the field `o.x` survives
+4000 string allocations, 1000 double arrays and a full `major_gc` without
+type change or fault — the pointer is live, no UAF. Maglev itself works
+(`%GetOptimizationStatus` = 25). Consequence: deterministic rung-6 payload
+validation must run in the **browser 146.0.7680.72** (V8 14.6.202.11), which
+is proven vulnerable (rung-5 landing). `cases/CVE-2026-3910/d8/rung6-validate.js`
+is kept as the payload-logic harness for a future pre-fix d8 build
+(build at `git checkout 7076ba135~1` in a full V8 clone, then it applies).
