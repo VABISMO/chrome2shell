@@ -66,6 +66,9 @@ if (!existsSync(args.browser)) {
 const INJECT = `<script>(function(){
 // visibility: surface page errors immediately (first-wins like the result)
 window.addEventListener('error', function(ev){
+  // resource errors (media/img load failures) reach capture listeners with no
+  // message/filename — only real script errors count
+  if(!ev.message && !ev.filename) return;
   try{ fetch('/collect?e='+encodeURIComponent('ERR:'+(ev.message||'')+'@'+(ev.filename||'')+':'+(ev.lineno||0))); }catch(_){}
 }, true);
 window.addEventListener('unhandledrejection', function(ev){

@@ -37,6 +37,7 @@ function parseArgs(argv) {
     else if (a === "--timeout") out.timeoutMs = Number(argv[++i]);
     else if (a === "--gpu") out.gpu = true;
     else if (a === "--ax-interval") out.axIntervalMs = Number(argv[++i]);
+    else if (a === "--trace-cats") out.traceCats = argv[++i];
     else if (a === "--extra") out.extra.push(argv[++i]);
     else if (!out.page) out.page = a;
   }
@@ -52,6 +53,9 @@ const axInterval = args.axIntervalMs ?? 120;
 
 const INJECT = `<script>(function(){
 window.addEventListener('error', function(ev){
+  // resource errors (media/img load failures) reach capture listeners with no
+  // message/filename — only real script errors count
+  if(!ev.message && !ev.filename) return;
   try{ fetch('/collect?e='+encodeURIComponent('ERR:'+(ev.message||'')+'@'+(ev.filename||'')+':'+(ev.lineno||0))); }catch(_){}
 }, true);
 window.addEventListener('unhandledrejection', function(ev){
@@ -75,6 +79,10 @@ let serverResult = null;
 let progress = [];
 let chromeExited = null;
 let axCalls = 0, axErrors = 0, axLastErr = null;
+let traceChunks = [];   // CDP Tracing.dataCollected payloads
+let traceStarted = false;
+const traceDiag = { methods: {} };
+let traceCtl = null;   // {send} — set by axLoop so main can Tracing.end
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
@@ -166,6 +174,12 @@ function cdpSession(wsUrl) {
     });
     ws.onmessage = (ev) => {
       const m = JSON.parse(ev.data);
+      if (m.method && m.method.startsWith("Tracing.")) {
+        traceDiag.methods[m.method] = (traceDiag.methods[m.method] || 0) + 1;
+      }
+      if (m.method === "Tracing.dataCollected" && m.params && m.params.value) {
+        traceChunks.push(...m.params.value);
+      }
       if (m.id && pending.has(m.id)) {
         const p = pending.get(m.id); pending.delete(m.id);
         m.error ? p.rej(new Error(JSON.stringify(m.error))) : p.res(m.result);
@@ -187,7 +201,12 @@ async function axLoop() {
   if (!dpPort) throw new Error("no DevToolsActivePort");
   const ver = await (await fetch(`http://127.0.0.1:${dpPort}/json/version`)).json();
   const { ws, send } = await cdpSession(ver.webSocketDebuggerUrl);
-  const t = await send("Target.getTargets");
+    if (args.traceCats) {
+    await send("Tracing.start", { categories: args.traceCats, options: "sampling-frequency=10000" });
+    traceStarted = true;
+    traceCtl = { send };
+  }
+const t = await send("Target.getTargets");
   const page = t.targetInfos.find((x) => x.type === "page");
   if (!page) throw new Error("no page target");
   const { sessionId } = await send("Target.attachToTarget", { targetId: page.targetId, flatten: true });
@@ -204,6 +223,10 @@ async function axLoop() {
     }
     await new Promise((r) => setTimeout(r, axInterval));
   }
+  if (args.traceCats) {
+    try { await send("Tracing.end", {}); } catch (e) {}
+    await new Promise((r) => setTimeout(r, 800));
+  }
   try { ws.close(); } catch {}
 }
 axLoop().catch((e) => { axLastErr = "setup:" + String(e.message).slice(0, 100); });
@@ -211,6 +234,12 @@ axLoop().catch((e) => { axLastErr = "setup:" + String(e.message).slice(0, 100); 
 const timeout = setTimeout(() => resolveResult({ ok: false, error: "timeout waiting for result" }), args.timeoutMs);
 const outcome = await resultPromise;
 clearTimeout(timeout);
+
+// Tracing.dataCollected is flushed at Tracing.end — MUST run for every outcome
+if (args.traceCats && traceCtl) {
+  try { await traceCtl.send("Tracing.end", {}); } catch (e) {}
+  await new Promise((r) => setTimeout(r, 1200));
+}
 
 await new Promise((r) => setTimeout(r, 400));
 chrome.kill("SIGTERM");
@@ -227,6 +256,7 @@ const report = {
   browser: args.browser,
   driver: "ax-run (Accessibility.getFullAXTree loop)",
   ax: { calls: axCalls, errors: axErrors, lastErr: axLastErr },
+  traceDiag: { cats: args.traceCats ?? null, started: traceStarted, chunks: traceChunks.length, methods: traceDiag.methods },
   ok: outcome.ok,
   error: outcome.error ?? null,
   result: outcome.result ?? null,
@@ -234,6 +264,14 @@ const report = {
   progress,
   stderrBytes: stderr.length,
 };
+if (args.traceCats && traceChunks.length) {
+  const tracePath = args.out ? args.out.replace(/\.json$/, ".trace.json") : null;
+  if (tracePath) {
+    await writeFile(tracePath, JSON.stringify({ traceEvents: traceChunks }) + "\n");
+    report.traceFile = tracePath;
+    report.traceEvents = traceChunks.length;
+  }
+}
 if (args.out) {
   await mkdir(dirname(args.out), { recursive: true });
   await writeFile(args.out, JSON.stringify(report, null, 2) + "\n");
