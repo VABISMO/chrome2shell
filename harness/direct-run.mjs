@@ -185,7 +185,7 @@ const flags = [
   "--remote-debugging-port=0",
   "--no-proxy-server",
   // profile keyed by build: an older Chrome refuses a newer version's profile
-  `--user-data-dir=/tmp/opencode/direct-profile-${args.browser.split("/").slice(-3, -2).join("").replace(/\W/g, "")}`,
+  `--user-data-dir=${process.env.LAB_PROFILE_DIR || "/tmp/opencode"}/direct-profile-${args.browser.split("/").slice(-3, -2).join("").replace(/\W/g, "")}`,
   "--remote-allow-origins=*",
 ];
 if (args.jsFlags) flags.push(`--js-flags=${args.jsFlags}`);
