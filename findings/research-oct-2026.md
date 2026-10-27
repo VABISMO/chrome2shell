@@ -240,3 +240,30 @@ Conclusion: the fix's production window (Terminate without context death) is
 not reachable by killing the device window — the factory nulls earlier. Next
 research lever = locate the webrtc-core Terminate call (third_party/webrtc
 source via a working checkout) or a mid-session Terminate trigger.
+
+### CVE-2026-113303 — v17-v20: full asymmetric recipe + the remaining leg
+
+Proven this round (evidence: `findings/raw/CVE-2026-113303.differential.v15.json`, commits 22d570f+):
+- **v17 (cross-window)**: holder A terminates its engine in place
+  (majors + 3.2s transport patience — v15 proved the track does NOT retain the
+  engine), B attaches A's stream to A's TERMINATED device:
+  **155: 6/6 accepted + sink alive (sinkOK=6); 156: 0/6 (FAIL×6)** — full
+  cross-window differential of the fix gate, repeated 8-10 cycles (v18/v19).
+- **Audio pulls verified by trace**: `WebRtcAudioRenderer::Render` x986,
+  `SourceCallback` x986, `WebRtcAudioDeviceImpl::RenderData` x986 — the UAF
+  deref site executes in bursts ~3s/cycle (first flags said zero because the
+  filter list truncated; full names confirmed).
+- **Remaining leg = device FREED while the accepted sink pulls**: the device
+  dtor (`WRADI::WebRtcAudioDeviceImpl()` — same string as ctor) never fires
+  during runs (ctor+dtor count == VEi count in every variant: 15/15, 10/10,
+  8/8) even after killing A by navigation and (v20 diag) dropping every
+  B-side reference + majors. Diagnosis: the per-context
+  PeerConnectionDependencyFactory/device (and/or the webrtc factory's
+  `scoped_refptr adm`) survives — candidate holders: cross-realm refs from B
+  (A-window objects), session-history retention of the popup documents, and
+  the unlocated factory ref. Freed-but-mapped reads also wouldn't fault
+  without slot reuse (v18 added a PartitionAlloc ArrayBuffer spray — kept).
+Next concrete step: break the retention — transfer all A-realm references out
+of B (or evict session history / close popups AFTER B has the B-realm
+MediaStream), verify dtor count rises, then the pull-after-free window is
+live for the crash differential (155 crash vs 156 clean).
