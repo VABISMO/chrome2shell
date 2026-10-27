@@ -38,6 +38,7 @@ function parseArgs(argv) {
     else if (a === "--gpu") out.gpu = true;
     else if (a === "--ax-interval") out.axIntervalMs = Number(argv[++i]);
     else if (a === "--trace-cats") out.traceCats = argv[++i];
+    else if (a === "--watch-names") out.watchNames = argv[++i];
     else if (a === "--extra") out.extra.push(argv[++i]);
     else if (!out.page) out.page = a;
   }
@@ -70,7 +71,7 @@ var iv=setInterval(function(){
     }catch(e){fetch('/collect?e='+encodeURIComponent('PUB:'+String(e)));}
   }
 },50);
-setTimeout(function(){clearInterval(iv);fetch('/collect?e=timeout');},120000);
+var _BT=Number(new URLSearchParams(location.search).get('beacon_ms'))||120000;setTimeout(function(){clearInterval(iv);fetch('/collect?e=timeout');},_BT);
 })();</script>`;
 
 let resolveResult;
@@ -84,6 +85,9 @@ let traceStarted = false;
 const traceDiag = { methods: {} };
 let traceCtl = null;   // {send} — set by axLoop so main can Tracing.end
 let lastTreeStat = null;
+let watchNames = null;          // PREFIX string
+const nameSeen = new Map();     // nodeId -> last name (stability watch)
+const nameAnomalies = [];       // {id, from, to} — a changed name == UAF-read signal
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
@@ -212,6 +216,7 @@ const t = await send("Target.getTargets");
   if (!page) throw new Error("no page target");
   const { sessionId } = await send("Target.attachToTarget", { targetId: page.targetId, flatten: true });
   await send("Accessibility.enable", {}, sessionId);
+  watchNames = args.watchNames ?? null;
   // the AX-client loop: pull the full tree as fast as the interval allows —
   // every pull re-serializes names/descriptions and processes deferred updates
   while (!earlyResolved) {
@@ -225,6 +230,24 @@ const t = await send("Target.getTargets");
           hist[r] = (hist[r] || 0) + 1;
         }
         lastTreeStat = { nodes: tk.nodes.length, hist };
+        if (watchNames) {
+          for (const n of tk.nodes) {
+            const nm = (n.name && n.name.value) || "";
+            const ds = (n.description && n.description.value) || "";
+            const val = nm.startsWith(watchNames) ? nm
+                      : ds.startsWith(watchNames) ? "[desc]" + ds : null;
+            if (val === null) continue;
+            if (nm.startsWith(watchNames) || ds.startsWith(watchNames)) {
+              const key = n.nodeId + (ds.startsWith(watchNames) ? "d" : "n");
+              const prev = nameSeen.get(key);
+              if (prev !== undefined && prev !== val) {
+                if (nameAnomalies.length < 20)
+                  nameAnomalies.push({ id: n.nodeId, from: prev.slice(0, 60), to: val.slice(0, 60) });
+              }
+              nameSeen.set(key, val);
+            }
+          }
+        }
       }
     } catch (e) {
       axErrors++; axLastErr = String(e.message).slice(0, 100);
@@ -267,6 +290,8 @@ const report = {
   ax: { calls: axCalls, errors: axErrors, lastErr: axLastErr },
   traceDiag: { cats: args.traceCats ?? null, started: traceStarted, chunks: traceChunks.length, methods: traceDiag.methods },
   lastTreeStat,
+  nameAnomalies: nameAnomalies.length ? nameAnomalies : undefined,
+  namesWatched: watchNames ?? undefined,
   ok: outcome.ok,
   error: outcome.error ?? null,
   result: outcome.result ?? null,

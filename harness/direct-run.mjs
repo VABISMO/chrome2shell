@@ -86,7 +86,7 @@ var iv=setInterval(function(){
     }catch(e){fetch('/collect?e='+encodeURIComponent('PUB:'+String(e)));}
   }
 },50);
-setTimeout(function(){clearInterval(iv);fetch('/collect?e=timeout');},120000);
+var _BT=Number(new URLSearchParams(location.search).get('beacon_ms'))||120000;setTimeout(function(){clearInterval(iv);fetch('/collect?e=timeout');},_BT);
 })();</script>`;
 
 let resolveResult;
