@@ -56,11 +56,11 @@ The two most recent releases (October 15 and 20, 2026) contain **7 CVEs rated
 |-----|-----------|------|--------|-----------|--------------|
 | CVE-2026-110922 | Prerender | UAF (browser) | 568719351 | `d50992ebe4` | ⛔ stage 1 blocked (see below) |
 | CVE-2026-113341 | Skia / Ganesh | UAF (driver) | 569165786 | `02b14267` (skia) | ⛔ no Imagination hardware |
-| CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 stage 1 (a11y stress) |
+| CVE-2026-113279 | Accessibility | Mem. corruption | 570093145 | `83ce9f18d7` | 🧪 stage 1 — mechanism mapped (lifecycle + serializer `crash_on_error`), no crash shape yet |
 | CVE-2026-113072 | CSS / LCP | Mem. corruption | 570638836 | `73dd2febfa` | 🟡 stage 1–2 (exposure) |
-| CVE-2026-113280 | Paint / caret | Mem. corruption | 570740320 | `3ab9f85874` | 🧪 stage 1 (paint stress) |
-| CVE-2026-113271 | Accessibility | UAF (StringImpl) | 571618833 | `15248c94bc` | 🧪 stage 1 (a11y stress) |
-| CVE-2026-113303 | WebRTC / audio | Mem. corruption | 574041825 | `e193ceb7de` | 🧪 stage 1 (audio stress) |
+| CVE-2026-113280 | Paint / caret | Mem. corruption | 570740320 | `3ab9f85874` | 🧪 stage 1 — gated: no PrePaint nesting in any local build (trace-verified) |
+| CVE-2026-113271 | Accessibility | UAF (StringImpl) | 571618833 | `15248c94bc` | 🧪 stage 1 — window identified; attribute-storage writer not yet |
+| CVE-2026-113303 | WebRTC / audio | Mem. corruption | 574041825 | `e193ceb7de` | 🟡 stage 1 differential — vulnerable attach-after-Terminate state proven (155 accepts / 156 rejects) |
 
 The full per-CVE, per-stage tracker (crash / leak / RCE columns and next
 actions) is [`findings/STAGES.md`](findings/STAGES.md).
@@ -97,6 +97,7 @@ build.** Methodology, tool matrix and per-CVE plans:
 | **CVE-2026-3910** | **2 — leak PoC (published exploit)** | dangling `o.x` read as a long string overlapping the heap: signature scan finds `0x3ff19999` (double 1.1) 3/3 runs → leaks the PACKED_DOUBLE **JSArray map (static root)** and the **elements heap pointer** (varies per run = ASLR material) | `cases/CVE-2026-3910/poc-leak-min.html`, `findings/raw/CVE-2026-3910.leak.vulnerable.json` |
 | **CVE-2026-2441** | **2 — UAF-read leak PoC** | after the free, reclaim the bucket buffer with24 foreign `@font-feature-values` maps (same size class): the stale iterator returns **foreign keys that never existed in the original map** (`f0x1`, `f13x2`, …) = read-after-free of replaced memory | `cases/CVE-2026-2441/poc-leak.html`, `findings/raw/CVE-2026-2441.leak.vulnerable.json` |
 | CVE-2026-113072 — CSS/LCP (Oct release) | 1–2 — exposure | LCP hands out the hidden `::before` node on155, `null` on156 | `cases/CVE-2026-113072/poc-leak.html` |
+| **CVE-2026-113303** — WebRTC audio device (Oct release) | **1 — differential trigger (behavioral)** | mid-session `adm()->Terminate()` driven by destroying every `RTCPeerConnection` (majors + GC) → attach to the terminated device: **155 accepts (raw `source_`, live sink), 156 rejects** (`SetAudioRenderer failed`) | `cases/CVE-2026-113303/webrtc-audio-race-v13.html`, `findings/raw/CVE-2026-113303.differential.v15.json` |
 
 **Stage 3 status:** CVE-2026-3910 = 3/3 (full chain: crash → leak → arbitrary heap R/W, published exploit reproduced). CVE-2026-85046 stage 3 = standalone fakeobj proven impossible from JS (self-describing tags + reader-deopt evidence, 5 raw-write sources eliminated; builds with 85046 and 3910 features are disjoint). The chain campaign — 85046's
 addrof + CVE-2026-3910's raw-bit store on `146.0.7680.72` (a build vulnerable

@@ -13,7 +13,7 @@
  * (beacon collection, stderr crash watch, phase trail, --extra flags).
  *
  * Usage:
- *   node harness/ax-run.mjs cases/CVE-2026-113279/map-remove-ax.html \
+ *   node harness/ax-run.mjs cases/CVE-2026-113279/multi-primary.html \
  *     --browser builds/145.0.7632.67/chrome-linux64/chrome \
  *     --out findings/raw/CVE-2026-113279.ax.json --stderr ... --timeout 90000
  */
