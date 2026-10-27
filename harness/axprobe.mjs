@@ -59,12 +59,17 @@ const show = (n, indent) => {
 for (const n of tree.nodes) {
   const name = (n.name && n.name.value) || "";
   const role = (n.role && n.role.value) || "";
-  if (/image|link|GenericContainer|Map/i.test(role) || /area|map/i.test(String(n.nativeDOMNodeType))) {
-    show(n, "");
-    let p = byId.get(n.parentId);
-    let depth = 1;
-    while (p && depth < 4) { show(p, "  ".repeat(depth) + "└ "); p = byId.get(p.parentId); depth++; }
-  }
+}
+// FULL dump: every node with role/name/parent — answers "does <map> have its
+// own AXObject?" by showing the node itself
+console.log("--- FULL TREE ---");
+for (const n of tree.nodes) {
+  const name = (n.name && n.name.value) || "";
+  const role = (n.role && n.role.value) || "";
+  const par = byId.get(n.parentId);
+  const parRole = par ? ((par.role && par.role.value) || "?") : "ROOT";
+  const parName = par ? ((par.name && par.name.value) || "") : "";
+  console.log("role=" + String(role).padEnd(18) + " name=\"" + String(name).slice(0,24).padEnd(24) + "\" ignored=" + !!n.ignored + " parent=" + parRole + (parName ? "(" + parName.slice(0,16) + ")" : ""));
 }
 console.log("total nodes:", tree.nodes.length);
 ws.close();

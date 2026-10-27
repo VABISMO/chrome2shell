@@ -83,6 +83,7 @@ let traceChunks = [];   // CDP Tracing.dataCollected payloads
 let traceStarted = false;
 const traceDiag = { methods: {} };
 let traceCtl = null;   // {send} — set by axLoop so main can Tracing.end
+let lastTreeStat = null;
 
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, "http://127.0.0.1");
@@ -215,8 +216,16 @@ const t = await send("Target.getTargets");
   // every pull re-serializes names/descriptions and processes deferred updates
   while (!earlyResolved) {
     try {
-      await send("Accessibility.getFullAXTree", {}, sessionId);
+      const tk = await send("Accessibility.getFullAXTree", {}, sessionId);
       axCalls++;
+      {
+        const hist = {};
+        for (const n of tk.nodes) {
+          const r = (n.role && n.role.value) || "?";
+          hist[r] = (hist[r] || 0) + 1;
+        }
+        lastTreeStat = { nodes: tk.nodes.length, hist };
+      }
     } catch (e) {
       axErrors++; axLastErr = String(e.message).slice(0, 100);
       await new Promise((r) => setTimeout(r, 500));
@@ -257,6 +266,7 @@ const report = {
   driver: "ax-run (Accessibility.getFullAXTree loop)",
   ax: { calls: axCalls, errors: axErrors, lastErr: axLastErr },
   traceDiag: { cats: args.traceCats ?? null, started: traceStarted, chunks: traceChunks.length, methods: traceDiag.methods },
+  lastTreeStat,
   ok: outcome.ok,
   error: outcome.error ?? null,
   result: outcome.result ?? null,

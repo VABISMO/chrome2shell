@@ -160,3 +160,34 @@ Tool: `harness/ax-run.mjs --trace-cats "<cats>"` (CDP Tracing domain;
   with external feImage href) or the pipeline landed between 155 and the
   pre-156 fix window. Trace-evidence over guesses: any future variant must
   first show non-zero nesting before burning crash-hunt runs.
+
+### CVE-2026-113279 — round 2 (2026-10-27): serializer as the crash sink + 5 new families
+
+Structural finding (source): `AXObjectCacheImpl::EnsureSerializer()` ALWAYS
+constructs the renderer `AXTreeSerializer` with **`crash_on_error = true`** —
+so any cache-vs-serializer inconsistency is a RELEASE crash, chiefly
+`GetClientTreeNodeParent()` → `NOTREACHED()` (crash key
+`ax_ts_missing_parent_err`) when an update's parent id is no longer in the
+client tree, plus `CHECK(lca)`/`CHECK(child)` in `ComputeReparentingLCA`.
+Also mapped: `AXObjectCacheLifecycle` semantics (`StateAllowsImmediateTreeUpdates`
+= kProcessDeferredUpdates|kFinalizingTree; `ChildrenChanged()` has an
+always-on `CHECK(StateAllowsDeferTreeUpdates())`), and the `in_cached_attribute_values_update_`
+guard window.
+
+Families executed today on 155 with live AX client (--ax-interval 50) +
+tracing, all clean (no signal/CHECK/NOTREACHED):
+1. `deferred-entry.html` — 600 ops over every RemoveSubtree entry vector
+   (restore-prune via display, role-change, subtree-attach, direct removals).
+2. `finalizing-nest.html` — role=button+title forced layout during AX pass with
+   display churn destroying the LayoutImage (nested ObjectDetached→RemoveSubtree(map,false)).
+3. `immediate-mode.html` — removals + focus/selection in the same task
+   (IsImmediateProcessingRequired → immediate serialization triggers).
+4. `queue-dangle.html` — area href/coords churn (AXObject-valued queue entries)
+   + same-tick wrapper removal (map-branch rebuild in the same deferred pass).
+5. `multi-primary.html` — 3 imgs sharing one usemap, primary destroyed/rebuilt
+   (168 rebuilds), usemap flips, primary-switch ClearChildren.
+
+State: mechanism fully mapped; the missing interleaving likely needs the
+restricted bug report's original repro or a client pattern our CDP client does
+not reproduce. Next-if-continued: browser-side event patterns
+(BrowserAccessibilityManager CHECKs), or debug-build CHECK reproduction.
