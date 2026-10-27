@@ -191,3 +191,24 @@ State: mechanism fully mapped; the missing interleaving likely needs the
 restricted bug report's original repro or a client pattern our CDP client does
 not reproduce. Next-if-continued: browser-side event patterns
 (BrowserAccessibilityManager CHECKs), or debug-build CHECK reproduction.
+
+### CVE-2026-113303 — source-traced web recipe (2026-10-27)
+
+Full chain traced (files: `media_stream_renderer_factory.cc`,
+`webrtc_audio_device_impl.{h,cc}`, webrtc core ADM interface):
+- **Attach side**: a REMOTE PC audio track consumed via `<audio srcObject>`
+  invokes `MediaStreamRendererFactory` → `SetAudioRenderer` (main thread):
+  release `lock_` → `renderer->Initialize(this)` (THE window) → relock.
+  `pc.ontrack` alone never attaches — earlier loops were missing this.
+- **Terminate side**: `WebRtcAudioDeviceImpl::Terminate()` asserts the
+  SIGNALLING thread and runs at webrtc-core PC teardown (`pc.close()`), moving
+  `renderer_` out and DisconnectSource().
+- **Dangling use**: renderer keeps raw `source_` to the terminated device
+  (vulnerable), freed at window/device destruction → teardown navigation is
+  the deref moment.
+- Constraints learned: **500 RTCPeerConnections = lifetime cap per renderer
+  process** (probe `pccap-probe.html` nails exactly 500 create+close) →
+  ≤245 cycles/run, volume = batched runs.
+
+`webrtc-audio-race-v4.html` validated: 240 attaches / 239 srcObject sets /
+237 closes per run, teardown navigation executes. Batch runs hunt the crash.
