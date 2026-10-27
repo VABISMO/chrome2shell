@@ -177,3 +177,28 @@ Next action: any future variant must first show non-zero PrePaint nesting in a
 trace before spending crash-hunt runs; remaining untested condition is a
 narrower page shape (caret inside an iframe in the filtered subtree was tried;
 SVG-root filter with external feImage href was not).
+
+### 113303 — lifetime-leg findings (freed=1 experiment)
+
+- Code queued after `location.replace()` dies at the navigation commit
+  (~100–300 ms): a post-nav release/beacon never executes — release code must
+  run in the same tick BEFORE the replace, or in a second window.
+- The default nav recipe completed **271 cycles in one 15-min run with ZERO
+  device dtors** (`WRADI::WebRtcAudioDeviceImpl()` count == `VEi` count == 271
+  exactly, 541 post-Terminate attaches accepted, VET×270): the per-load device
+  is created but never destroyed during the session — the retention survives
+  self-navigation with no external JS references, i.e. it sits at the webrtc
+  factory / process level (the `CleanupPeerConnectionFactory` signalling-hop
+  path has no callers in the fetched sources; the factory's `scoped_refptr adm`
+  likely keeps every device alive to shutdown).
+- Consequence: a device-freed-while-sink-pulls window was not reachable by any
+  navigation/GC shape tested (self-nav x271, popup kill, cross-window, ref
+  release). Combined with the fix's own comments (locks over `initialized_`,
+  DCHECK moves to locked regions), the fix reads primarily as **thread-safety
+  hardening of a cross-thread state**; the release-build crash manifestation is
+  rare/absent at 46k+ tick scale.
+- The lab's stage-1 alternative for such bugs (`docs/EXPLOITATION.md` §1:
+  "live observation of corrupted state") is satisfied by the **behavioral
+  differential already banked** (`CVE-2026-113303.differential.v15.json`):
+  vulnerable build accepts attach-after-Terminate (raw `source_` on a
+  terminated device), fixed build rejects — same recipe, both builds.
