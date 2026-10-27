@@ -212,3 +212,31 @@ Full chain traced (files: `media_stream_renderer_factory.cc`,
 
 `webrtc-audio-race-v4.html` validated: 240 attaches / 239 srcObject sets /
 237 closes per run, teardown navigation executes. Batch runs hunt the crash.
+
+### CVE-2026-113303 — v11 cross-window: reproducible crash + why it is NOT stage-1
+
+Recipe (v11): opener B consumes holder A's remote stream
+(`srcObject` -> factory -> `SetAudioRenderer` on A's per-window device),
+kills A (same-origin navigation = context teardown), re-attaches (fix's
+"attach after Terminate" moment), keeps B playing (asymmetric lifetime).
+
+Results:
+- CONTROL (A alive): 8/8 iterations, 16 SetAudioRenderer, both attaches reach
+  the device — cross-window attach machinery works.
+- KILL-A: reproducible `SEGV_MAPERR 000000000000` on **BOTH 155 and 156**,
+  identical stack shape (frame bands match build-to-build), crashing at the
+  first line inside `MediaStreamRendererFactory::GetAudioRenderer` — i.e.
+  `audio_components[0].Get()` is NULL because the holder's context death took
+  the track's AudioComponents; the factory derefs before ever consulting the
+  fixed `SetAudioRenderer` gate.
+- Same crash on the fixed build => by lab differential rules NOT claimable as
+  this CVE's stage 1.
+- Lifecycle facts banked from --v=1: Init once (RegisterAudioCallback x1);
+  no Terminate observed on pc.close (156 still accepts attach 250ms after all
+  pcs close => initialized_ stays true); CleanupPeerConnectionFactory has no
+  visible callers in 155 sources reachable by our tooling — the webrtc-core
+  ADM Terminate caller remains the ONE unmapped link.
+Conclusion: the fix's production window (Terminate without context death) is
+not reachable by killing the device window — the factory nulls earlier. Next
+research lever = locate the webrtc-core Terminate call (third_party/webrtc
+source via a working checkout) or a mid-session Terminate trigger.
